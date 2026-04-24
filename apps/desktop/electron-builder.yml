@@ -1,0 +1,24 @@
+appId: io.desktop-tracker.app
+productName: Desktop Tracker
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: "../collector/target/release/desktop-tracker-collector.exe"
+    to: "collector/desktop-tracker-collector.exe"
+asar: true
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: "DesktopTracker-Setup-${version}.${ext}"
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

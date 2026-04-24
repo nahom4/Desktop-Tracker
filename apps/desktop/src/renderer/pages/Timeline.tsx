@@ -1,0 +1,94 @@
+import { useEffect, useMemo, useState } from "react";
+import type { ActivityEvent } from "@desktop-tracker/shared";
+import { api } from "../lib/api";
+import { TimelineStrip } from "../components/TimelineStrip";
+import { formatDuration, formatTime } from "../lib/format";
+
+const DAY_MS = 86_400_000;
+
+function startOfDay(d: Date): number {
+  const c = new Date(d);
+  c.setHours(0, 0, 0, 0);
+  return c.getTime();
+}
+
+export function Timeline() {
+  const [offset, setOffset] = useState(0); // days back from today
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+
+  const dayStart = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - offset);
+    return startOfDay(d);
+  }, [offset]);
+  const dayEnd = dayStart + DAY_MS;
+
+  useEffect(() => {
+    let cancelled = false;
+    api.eventsInRange(dayStart, dayEnd).then((ev) => {
+      if (!cancelled) setEvents(ev);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dayStart, dayEnd]);
+
+  const dateLabel = new Date(dayStart).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+  return (
+    <div className="p-8 space-y-6 max-w-[1400px]">
+      <header className="flex items-baseline justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Timeline</h1>
+          <p className="text-sm text-slate-500 mt-1">{dateLabel}</p>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <button
+            onClick={() => setOffset((o) => o + 1)}
+            className="px-3 py-1.5 rounded-md border border-slate-800 hover:bg-slate-800 transition-colors"
+          >
+            ← Previous day
+          </button>
+          <button
+            disabled={offset === 0}
+            onClick={() => setOffset((o) => Math.max(0, o - 1))}
+            className="px-3 py-1.5 rounded-md border border-slate-800 hover:bg-slate-800 transition-colors disabled:opacity-40"
+          >
+            Next day →
+          </button>
+        </div>
+      </header>
+
+      <TimelineStrip events={events} periodStart={dayStart} periodEnd={dayEnd} />
+
+      <div className="rounded-xl border border-slate-800 bg-slate-900/40">
+        <div className="px-5 py-3 border-b border-slate-800 text-sm font-medium text-slate-200">
+          Sessions
+        </div>
+        <div className="divide-y divide-slate-800/60">
+          {events.length === 0 && (
+            <div className="px-5 py-6 text-sm text-slate-500">No sessions recorded.</div>
+          )}
+          {events.map((e) => (
+            <div key={e.id} className="px-5 py-3 grid grid-cols-12 gap-3 text-sm items-center">
+              <div className="col-span-2 text-slate-400 tabular-nums">
+                {formatTime(e.startTs)} → {formatTime(e.endTs)}
+              </div>
+              <div className="col-span-1 text-slate-500 tabular-nums">
+                {formatDuration(e.durationMs)}
+              </div>
+              <div className="col-span-2 text-slate-200 truncate">{e.exe}</div>
+              <div className="col-span-2 text-slate-400 truncate">{e.project ?? ""}</div>
+              <div className="col-span-2 text-slate-400 truncate">{e.domain ?? ""}</div>
+              <div className="col-span-3 text-slate-500 truncate">{e.title ?? ""}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0d10;
+  --color-surface: #11151b;
+  --color-surface-2: #161b22;
+  --color-border: #1f2630;
+  --color-text: #e6edf3;
+  --color-muted: #8b949e;
+  --color-accent: #58a6ff;
+  --color-good: #22c55e;
+  --color-warn: #eab308;
+  --color-bad: #ef4444;
+}
+
+html, body, #root { height: 100%; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+
+* { scrollbar-width: thin; scrollbar-color: #2a3340 transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a3340; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4452; }
+
+/* --- print/export mode: hides chrome (sidebar, export buttons, scrollbars) -- */
+html.is-printing aside,
+html.is-printing [data-export-chrome] {
+  display: none !important;
+}
+html.is-printing main {
+  overflow: visible !important;
+  height: auto !important;
+}
+html.is-printing,
+html.is-printing body,
+html.is-printing #root {
+  height: auto !important;
+  background: #0b0d10 !important;
+}
+@media print {
+  aside, [data-export-chrome] { display: none !important; }
+}

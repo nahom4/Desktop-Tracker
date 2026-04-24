@@ -1,0 +1,50 @@
+{
+  "name": "@desktop-tracker/desktop",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Electron + React desktop app for desktop-tracker.",
+  "main": "dist/main/index.cjs",
+  "scripts": {
+    "dev": "node ./scripts/kill-stale-dev.mjs && cross-env NODE_ENV=development concurrently -k -n main,renderer -c blue,green \"npm:dev:main\" \"npm:dev:renderer\"",
+    "dev:renderer": "vite",
+    "dev:main": "node ./scripts/dev-main.mjs",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "node ./scripts/build-main.mjs",
+    "build:renderer": "vite build",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "package": "npm run build && electron-builder",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "review:daily": "npm run build:main && electron dist/main/index.cjs --review-daily-now"
+  },
+  "dependencies": {
+    "@desktop-tracker/analysis": "*",
+    "@desktop-tracker/defaults": "*",
+    "@desktop-tracker/shared": "*",
+    "better-sqlite3": "^11.5.0",
+    "date-fns": "^4.1.0",
+    "nodemailer": "^9.0.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.9.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "chokidar": "^4.0.1",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.13.3",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0",
+    "wait-on": "^8.0.1"
+  }
+}

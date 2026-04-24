@@ -1,0 +1,9 @@
+# Pin the collector to the GNU Rust toolchain so it builds without requiring
+# Visual Studio MSVC Build Tools. The GNU toolchain ships its own MinGW-w64
+# GCC linker via `rust-mingw`, so a stock rustup install is all that's needed.
+#
+# Users with MSVC installed who prefer the MSVC target can remove this file.
+
+[toolchain]
+channel = "stable-x86_64-pc-windows-gnu"
+profile = "minimal"

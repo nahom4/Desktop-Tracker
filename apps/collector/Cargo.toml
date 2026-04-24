@@ -1,0 +1,36 @@
+[package]
+name = "desktop-tracker-collector"
+version = "0.0.2"
+edition = "2021"
+description = "Windows desktop activity sampler for desktop-tracker."
+publish = false
+
+[[bin]]
+name = "desktop-tracker-collector"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = "0.32"
+url = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

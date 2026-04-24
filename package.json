@@ -1,0 +1,27 @@
+{
+  "name": "desktop-tracker",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Local-first Windows desktop activity tracker with daily/weekly reports.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "apps/desktop",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/desktop",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "collector:build": "cd apps/collector && cargo build --release",
+    "collector:run": "cd apps/collector && cargo run --release",
+    "clean": "rimraf \"**/dist\" \"**/out\" \"**/build\" \"apps/collector/target\""
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1",
+    "typescript": "^5.6.3"
+  }
+}
