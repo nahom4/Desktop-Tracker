@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import {
   openDb,
@@ -39,6 +40,37 @@ if (!app.isPackaged) {
   app.setName("@desktop-tracker/desktop");
 }
 
+function logStartupError(label: string, error: unknown): void {
+  try {
+    const msg = error instanceof Error ? `${error.stack ?? error.message}` : String(error);
+    const line = `[${new Date().toISOString()}] ${label}: ${msg}\n`;
+    fs.mkdirSync(app.getPath("userData"), { recursive: true });
+    fs.appendFileSync(path.join(app.getPath("userData"), "startup.log"), line);
+  } catch {
+    // Last-resort logging must never become the reason startup fails.
+  }
+}
+
+function logStartupInfo(message: string): void {
+  try {
+    const line = `[${new Date().toISOString()}] ${message}\n`;
+    fs.mkdirSync(app.getPath("userData"), { recursive: true });
+    fs.appendFileSync(path.join(app.getPath("userData"), "startup.log"), line);
+  } catch {
+    // Diagnostic logging must not affect startup.
+  }
+}
+
+process.on("uncaughtException", (error) => {
+  logStartupError("uncaughtException", error);
+  console.error("[main] uncaughtException", error);
+});
+
+process.on("unhandledRejection", (error) => {
+  logStartupError("unhandledRejection", error);
+  console.error("[main] unhandledRejection", error);
+});
+
 let mainWindow: BrowserWindow | null = null;
 
 const REVIEW_DAILY_CLI = process.argv.includes("--review-daily-now");
@@ -47,9 +79,11 @@ const REVIEW_DAILY_CLI = process.argv.includes("--review-daily-now");
 if (!REVIEW_DAILY_CLI) {
   const gotLock = app.requestSingleInstanceLock();
   if (!gotLock) {
+    logStartupInfo("single instance lock denied; quitting");
     app.quit();
     process.exit(0);
   }
+  logStartupInfo("single instance lock acquired");
 
   app.on("second-instance", () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -110,6 +144,7 @@ async function runReviewDailyCli(): Promise<void> {
 }
 
 async function bootstrap() {
+  logStartupInfo("bootstrap start");
   initDb();
 
   const sessionizer = new Sessionizer();
@@ -135,12 +170,16 @@ async function bootstrap() {
       mainWindow.focus();
     }
   });
+  logStartupInfo("bootstrap complete");
 }
 
 if (REVIEW_DAILY_CLI) {
   app.whenReady().then(runReviewDailyCli);
 } else {
-  app.whenReady().then(bootstrap);
+  app.whenReady().then(bootstrap).catch((e) => {
+    logStartupError("bootstrap failed", e);
+    throw e;
+  });
 }
 
 app.on("window-all-closed", () => {
