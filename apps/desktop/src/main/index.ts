@@ -143,9 +143,33 @@ async function runReviewDailyCli(): Promise<void> {
   }
 }
 
+/**
+ * Register the app to launch at Windows login so it appears under
+ * Task Manager → Startup apps. Only for the packaged build — dev/CLI runs
+ * would otherwise register Electron's dev binary path in the user's registry.
+ */
+function syncAutoLaunch(): void {
+  if (!app.isPackaged) return;
+  try {
+    const wanted = getSetting("launch_at_login") !== "0"; // default on
+    const current = app.getLoginItemSettings();
+    if (current.openAtLogin !== wanted) {
+      app.setLoginItemSettings({
+        openAtLogin: wanted,
+        // Start straight into the tray (no dashboard window) on boot.
+        args: ["--hidden"],
+      });
+      logStartupInfo(`auto-launch set openAtLogin=${wanted}`);
+    }
+  } catch (e) {
+    logStartupError("syncAutoLaunch failed", e);
+  }
+}
+
 async function bootstrap() {
   logStartupInfo("bootstrap start");
   initDb();
+  syncAutoLaunch();
 
   const sessionizer = new Sessionizer();
 
