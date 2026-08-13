@@ -22,7 +22,7 @@ export function ExportMenu({ baseName, disabled }: ExportMenuProps) {
   };
 
   const buttonClass =
-    "px-3 py-1.5 rounded-md border border-slate-800 text-sm hover:bg-slate-800 transition-colors disabled:opacity-40";
+    "px-3 py-1.5 rounded-md border border-border text-sm hover:bg-elevate transition-colors disabled:opacity-40";
 
   return (
     <div className="flex items-center gap-2" data-export-chrome>

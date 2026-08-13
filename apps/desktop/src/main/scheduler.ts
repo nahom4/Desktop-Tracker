@@ -34,10 +34,14 @@ import {
 } from "./db";
 import { runUntilCaughtUp as runAiClassifier } from "./ai-classifier";
 import { generateAiReview } from "./ai-review";
-import { checkAndNotify } from "./notifier";
+import { checkAndNotify, sendDailyReportNotification } from "./notifier";
+import { syncToGithub } from "./sync-github";
 
 const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
+
+/** How many finished days back a catch-up pass will fill in. */
+const CATCH_UP_DAYS = 7;
 
 const DAILY_HOUR = 23;
 const DAILY_MINUTE = 55;
@@ -115,9 +119,19 @@ async function hourlyTick(): Promise<void> {
   } catch (e) {
     console.error("[scheduler] notifier failed", e);
   }
+  // 3. fill in reports for days the app was not awake at 23:55
+  try {
+    await catchUpReports();
+  } catch (e) {
+    console.error("[scheduler] catch-up failed", e);
+  }
 }
 
-async function runDailyJob(nowTs: number): Promise<void> {
+async function runDailyJob(
+  nowTs: number,
+  opts: { notify?: boolean } = {}
+): Promise<void> {
+  const { notify = true } = opts;
   console.log("[scheduler] running daily EOD job");
   // ensure the day's events are tagged before reporting
   try {
@@ -144,11 +158,29 @@ async function runDailyJob(nowTs: number): Promise<void> {
     `[scheduler] daily report saved (productivity=${report.productivityScore} focus=${report.focusScore} aiReview=${report.aiReview ? "yes" : "no"})`
   );
 
-  // final notification pass with today's full data
+  // Deliver it. Without this the report is only ever visible to someone who
+  // opens the Reports page and goes looking for it.
+  if (notify) {
+    try {
+      await sendDailyReportNotification(report);
+    } catch (e) {
+      console.error("[scheduler] daily report delivery failed", e);
+    }
+    // final threshold pass with today's full data
+    try {
+      await checkAndNotify();
+    } catch (e) {
+      console.error("[scheduler] daily notifier failed", e);
+    }
+  }
+
+  // Push last — the day's score is only final once the report above is saved,
+  // and 23:55 still leaves the commit dated to the day it describes.
   try {
-    await checkAndNotify();
+    const r = await syncToGithub({ reason: "end of day" });
+    console.log(`[scheduler] github sync: ${r.message}`);
   } catch (e) {
-    console.error("[scheduler] daily notifier failed", e);
+    console.error("[scheduler] github sync failed", e);
   }
 }
 
@@ -180,6 +212,58 @@ async function runWeeklyJob(nowTs: number): Promise<void> {
   console.log(
     `[scheduler] weekly report saved (avgProd=${report.averageProductivityScore} avgFocus=${report.averageFocusScore} aiReview=${report.aiReview ? "yes" : "no"})`
   );
+}
+
+function hasReport(kind: "daily" | "weekly", periodStart: number): boolean {
+  return Boolean(
+    getDb()
+      .prepare(`SELECT 1 FROM reports WHERE kind = ? AND period_start = ? LIMIT 1`)
+      .get(kind, periodStart)
+  );
+}
+
+/**
+ * Generate reports for finished days that never got one.
+ *
+ * The 23:55 tick only fires if the app happens to be awake at that exact
+ * minute — a closed laptop, a reboot, or simply quitting for the evening skips
+ * the day silently and forever. This runs at startup and hourly, so a missed
+ * day is picked up the next time the app is open, and the report is built from
+ * the stored events either way.
+ */
+export async function catchUpReports(): Promise<number> {
+  let made = 0;
+  const todayStart = startOfLocalDay(Date.now());
+
+  for (let i = 1; i <= CATCH_UP_DAYS; i++) {
+    const start = startOfLocalDay(todayStart - (i - 0.5) * DAY_MS);
+    if (hasReport("daily", start)) continue;
+    // Nothing tracked that day means nothing to report on — don't manufacture
+    // an empty report for a day the machine was off.
+    if (getEventsInRange(start, start + DAY_MS).length === 0) continue;
+    try {
+      await runDailyJob(start + DAY_MS / 2, { notify: false });
+      made++;
+    } catch (e) {
+      console.error(`[scheduler] catch-up daily ${new Date(start).toDateString()} failed`, e);
+    }
+  }
+
+  const lastWeekStart = startOfLocalWeek(startOfLocalWeek(Date.now()) - DAY_MS);
+  if (
+    !hasReport("weekly", lastWeekStart) &&
+    getEventsInRange(lastWeekStart, lastWeekStart + WEEK_MS).length > 0
+  ) {
+    try {
+      await runWeeklyJob(lastWeekStart + WEEK_MS / 2);
+      made++;
+    } catch (e) {
+      console.error("[scheduler] catch-up weekly failed", e);
+    }
+  }
+
+  if (made > 0) console.log(`[scheduler] catch-up generated ${made} missing report(s)`);
+  return made;
 }
 
 function persistReport(

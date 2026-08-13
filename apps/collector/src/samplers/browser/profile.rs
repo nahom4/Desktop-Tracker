@@ -67,6 +67,18 @@ fn chromium_user_data_root(exe: &str, cmdline: &[String]) -> Option<PathBuf> {
     if let Some(dir) = parse_flag_value(cmdline, "--user-data-dir") {
         return Some(PathBuf::from(dir));
     }
+    #[cfg(target_os = "linux")]
+    {
+        linux_chromium_user_data_root(exe)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        windows_chromium_user_data_root(exe)
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn windows_chromium_user_data_root(exe: &str) -> Option<PathBuf> {
     let local = std::env::var_os("LOCALAPPDATA")?;
     let root = match exe.to_ascii_lowercase().as_str() {
         "chrome.exe" => Path::new(&local).join("Google/Chrome/User Data"),
@@ -81,6 +93,66 @@ fn chromium_user_data_root(exe: &str, cmdline: &[String]) -> Option<PathBuf> {
     Some(root)
 }
 
+/// On Linux the same browser can be installed three ways at once (deb, Snap,
+/// Flatpak), each with its own profile root. Probe them in that order and take
+/// the first that exists so we read the profile the running browser is using.
+#[cfg(target_os = "linux")]
+fn linux_chromium_user_data_root(exe: &str) -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let candidates: &[&str] = match exe.to_ascii_lowercase().as_str() {
+        "chrome" | "google-chrome" | "google-chrome-stable" | "google-chrome-beta" => &[
+            ".config/google-chrome",
+            ".var/app/com.google.Chrome/config/google-chrome",
+        ],
+        "chromium" | "chromium-browser" => &[
+            ".config/chromium",
+            "snap/chromium/common/chromium",
+            ".var/app/org.chromium.Chromium/config/chromium",
+        ],
+        "brave" | "brave-browser" => &[
+            ".config/BraveSoftware/Brave-Browser",
+            "snap/brave/current/.config/BraveSoftware/Brave-Browser",
+            ".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser",
+        ],
+        "microsoft-edge" | "microsoft-edge-stable" => &[
+            ".config/microsoft-edge",
+            ".var/app/com.microsoft.Edge/config/microsoft-edge",
+        ],
+        "vivaldi" | "vivaldi-bin" | "vivaldi-stable" => &[
+            ".config/vivaldi",
+            ".var/app/com.vivaldi.Vivaldi/config/vivaldi",
+        ],
+        "opera" | "opera-beta" => &[".config/opera", ".config/opera-beta"],
+        _ => return None,
+    };
+    first_existing(&home, candidates)
+}
+
+#[cfg(target_os = "linux")]
+fn firefox_profiles_root() -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    first_existing(
+        &home,
+        &[
+            ".mozilla/firefox",
+            // Ubuntu ships Firefox as a Snap by default.
+            "snap/firefox/common/.mozilla/firefox",
+            ".var/app/org.mozilla.firefox/.mozilla/firefox",
+            ".librewolf",
+            ".zen",
+        ],
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn first_existing(home: &Path, relatives: &[&str]) -> Option<PathBuf> {
+    relatives
+        .iter()
+        .map(|r| home.join(r))
+        .find(|p| p.exists())
+}
+
+#[cfg(not(target_os = "linux"))]
 fn firefox_profiles_root() -> Option<PathBuf> {
     let appdata = std::env::var_os("APPDATA")?;
     Some(Path::new(&appdata).join("Mozilla/Firefox"))

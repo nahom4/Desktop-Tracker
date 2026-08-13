@@ -14,13 +14,19 @@ let proc: ChildProcess | null = null;
 let opts: BridgeOptions | null = null;
 let restartTimer: NodeJS.Timeout | null = null;
 
+/** Cargo appends `.exe` only on Windows. */
+const COLLECTOR_BIN =
+  process.platform === "win32"
+    ? "desktop-tracker-collector.exe"
+    : "desktop-tracker-collector";
+
 function resolveCollectorPath(): string {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, "collector", "desktop-tracker-collector.exe");
+    return path.join(process.resourcesPath, "collector", COLLECTOR_BIN);
   }
 
   const collectorDir = path.resolve(__dirname, "../../../../apps/collector");
-  const exeName = "desktop-tracker-collector.exe";
+  const exeName = COLLECTOR_BIN;
 
   // 1. Repo-local target dir (the conventional path).
   const local = path.join(collectorDir, "target", "release", exeName);

@@ -22,7 +22,12 @@ pub fn is_locked() -> bool {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub fn is_locked() -> bool {
+    super::linux::is_locked()
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn is_locked() -> bool {
     false
 }

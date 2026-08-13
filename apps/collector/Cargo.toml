@@ -2,7 +2,7 @@
 name = "desktop-tracker-collector"
 version = "0.0.2"
 edition = "2021"
-description = "Windows desktop activity sampler for desktop-tracker."
+description = "Desktop activity sampler for desktop-tracker (Windows + Linux)."
 publish = false
 
 [[bin]]
@@ -28,6 +28,12 @@ windows = { version = "0.58", features = [
     "Win32_System_ProcessStatus",
     "Win32_System_SystemInformation",
 ] }
+
+# Both crates are pure Rust, so a Linux build needs no system -dev packages:
+# zbus talks the D-Bus wire protocol directly rather than linking libdbus.
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "5"
+x11rb = { version = "0.13", features = ["screensaver"] }
 
 [profile.release]
 opt-level = 3

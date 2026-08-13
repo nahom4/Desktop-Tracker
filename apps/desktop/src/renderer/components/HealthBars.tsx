@@ -12,9 +12,9 @@ export function HealthBars({ title = "Category health", health, period }: Health
   const tracked = health.filter((h) => h.isHealthTracked);
   if (tracked.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h3 className="text-sm font-medium text-slate-200 mb-2">{title}</h3>
-        <p className="text-sm text-slate-500">
+      <div className="rounded-xl border border-border bg-surface/40 p-5">
+        <h3 className="text-sm font-medium text-text mb-2">{title}</h3>
+        <p className="text-sm text-subtle">
           No categories are health-tracked yet — toggle a category in the Categories page.
         </p>
       </div>
@@ -22,10 +22,10 @@ export function HealthBars({ title = "Category health", health, period }: Health
   }
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+    <div className="rounded-xl border border-border bg-surface/40 p-5">
       <div className="flex items-baseline justify-between mb-4">
-        <h3 className="text-sm font-medium text-slate-200">{title}</h3>
-        <span className="text-xs text-slate-500">
+        <h3 className="text-sm font-medium text-text">{title}</h3>
+        <span className="text-xs text-subtle">
           target per {period}
         </span>
       </div>
@@ -45,14 +45,14 @@ export function HealthBars({ title = "Category health", health, period }: Health
                     className="inline-block h-2 w-2 rounded-full"
                     style={{ backgroundColor: h.color }}
                   />
-                  <span className="text-slate-200">{h.category}</span>
+                  <span className="text-text">{h.category}</span>
                 </div>
-                <div className="tabular-nums text-slate-400">
-                  <span className="text-slate-200">{formatDuration(h.actualMs)}</span>
-                  <span className="text-slate-600"> / </span>
+                <div className="tabular-nums text-muted">
+                  <span className="text-text">{formatDuration(h.actualMs)}</span>
+                  <span className="text-faint"> / </span>
                   <span>{targetLabel}</span>
                   {h.targetMs && (
-                    <span className="ml-2 text-xs text-slate-500">
+                    <span className="ml-2 text-xs text-subtle">
                       {progress >= 1
                         ? `+${formatDuration(h.actualMs - h.targetMs)} over`
                         : `${formatDuration(remaining)} to go`}
@@ -60,7 +60,7 @@ export function HealthBars({ title = "Category health", health, period }: Health
                   )}
                 </div>
               </div>
-              <div className="h-2 w-full rounded-full bg-slate-800/70 overflow-hidden">
+              <div className="h-2 w-full rounded-full bg-elevate/70 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-[width] duration-500"
                   style={{

@@ -62,10 +62,19 @@ async function launchElectronNow() {
   await killElectronTree();
 
   console.log("[dev-main] launching electron");
+
+  // VS Code's integrated terminal exports ELECTRON_RUN_AS_NODE=1 for its own
+  // helper processes, and it leaks into anything launched from there. Inherited,
+  // it makes our Electron binary boot as plain Node — `require("electron")` then
+  // returns a stub whose `app` is undefined and startup dies on the first line.
+  const env = { ...process.env, VITE_DEV_SERVER_URL: "http://localhost:5173" };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.ELECTRON_NO_ATTACH_CONSOLE;
+
   electronProc = spawn(electronPath, ["."], {
     cwd: root,
     stdio: "inherit",
-    env: { ...process.env, VITE_DEV_SERVER_URL: "http://localhost:5173" },
+    env,
   });
 
   electronProc.on("exit", (code, signal) => {

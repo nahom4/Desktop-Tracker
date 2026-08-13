@@ -44,19 +44,19 @@ export function Timeline() {
       <header className="flex items-baseline justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Timeline</h1>
-          <p className="text-sm text-slate-500 mt-1">{dateLabel}</p>
+          <p className="text-sm text-subtle mt-1">{dateLabel}</p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <button
             onClick={() => setOffset((o) => o + 1)}
-            className="px-3 py-1.5 rounded-md border border-slate-800 hover:bg-slate-800 transition-colors"
+            className="px-3 py-1.5 rounded-md border border-border hover:bg-elevate transition-colors"
           >
             ← Previous day
           </button>
           <button
             disabled={offset === 0}
             onClick={() => setOffset((o) => Math.max(0, o - 1))}
-            className="px-3 py-1.5 rounded-md border border-slate-800 hover:bg-slate-800 transition-colors disabled:opacity-40"
+            className="px-3 py-1.5 rounded-md border border-border hover:bg-elevate transition-colors disabled:opacity-40"
           >
             Next day →
           </button>
@@ -65,26 +65,26 @@ export function Timeline() {
 
       <TimelineStrip events={events} periodStart={dayStart} periodEnd={dayEnd} />
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900/40">
-        <div className="px-5 py-3 border-b border-slate-800 text-sm font-medium text-slate-200">
+      <div className="rounded-xl border border-border bg-surface/40">
+        <div className="px-5 py-3 border-b border-border text-sm font-medium text-text">
           Sessions
         </div>
         <div className="divide-y divide-slate-800/60">
           {events.length === 0 && (
-            <div className="px-5 py-6 text-sm text-slate-500">No sessions recorded.</div>
+            <div className="px-5 py-6 text-sm text-subtle">No sessions recorded.</div>
           )}
           {events.map((e) => (
             <div key={e.id} className="px-5 py-3 grid grid-cols-12 gap-3 text-sm items-center">
-              <div className="col-span-2 text-slate-400 tabular-nums">
+              <div className="col-span-2 text-muted tabular-nums">
                 {formatTime(e.startTs)} → {formatTime(e.endTs)}
               </div>
-              <div className="col-span-1 text-slate-500 tabular-nums">
+              <div className="col-span-1 text-subtle tabular-nums">
                 {formatDuration(e.durationMs)}
               </div>
-              <div className="col-span-2 text-slate-200 truncate">{e.exe}</div>
-              <div className="col-span-2 text-slate-400 truncate">{e.project ?? ""}</div>
-              <div className="col-span-2 text-slate-400 truncate">{e.domain ?? ""}</div>
-              <div className="col-span-3 text-slate-500 truncate">{e.title ?? ""}</div>
+              <div className="col-span-2 text-text truncate">{e.exe}</div>
+              <div className="col-span-2 text-muted truncate">{e.project ?? ""}</div>
+              <div className="col-span-2 text-muted truncate">{e.domain ?? ""}</div>
+              <div className="col-span-3 text-subtle truncate">{e.title ?? ""}</div>
             </div>
           ))}
         </div>

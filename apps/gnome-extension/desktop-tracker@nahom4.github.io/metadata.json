@@ -1,0 +1,9 @@
+{
+  "uuid": "desktop-tracker@nahom4.github.io",
+  "name": "Desktop Tracker Window Provider",
+  "description": "Exposes the currently focused window (wm_class, title, pid) over the session bus so the Desktop Tracker collector can sample activity on Wayland. Read-only: it never modifies windows and never leaves your machine.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "session-modes": ["user", "unlock-dialog"],
+  "version": 1,
+  "url": "https://github.com/nahom4/Desktop-Tracker"
+}

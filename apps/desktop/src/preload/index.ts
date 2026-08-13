@@ -3,15 +3,27 @@ import type {
   ActivityEvent,
   Category,
   CategoryPatch,
+  CategoryPlan,
   CategoryRule,
   DailyReport,
   ExportRequest,
   ExportResult,
   NewCategory,
   NewCategoryRule,
+  NewPlanNote,
+  NewScheduleBlock,
+  NewScheduleOverride,
   NotificationConfig,
   NotificationLogEntry,
   PersistedReportRef,
+  PlanNote,
+  ScheduleBlock,
+  ScheduleBlockPatch,
+  ScheduleDayAdherence,
+  ScheduleNowStatus,
+  ScheduleOverride,
+  SchedulePlanWeek,
+  ScheduleWeekAdherence,
   WeeklyReport,
 } from "@desktop-tracker/shared";
 
@@ -27,6 +39,24 @@ export interface AiStatus {
 export interface ApiKeyStatus {
   hasValue: boolean;
   preview: string;
+}
+
+export interface GithubSyncResultView {
+  ok: boolean;
+  message: string;
+  committed?: boolean;
+  pushed?: boolean;
+  at: number;
+}
+
+export interface GithubSyncConfigView {
+  enabled: boolean;
+  repoUrl: string;
+  branch: string;
+  authorName: string;
+  authorEmail: string;
+  hasToken: boolean;
+  last: GithubSyncResultView | null;
 }
 
 const api = {
@@ -105,6 +135,58 @@ const api = {
     ipcRenderer.invoke("notif:test"),
   notifLog: (limit?: number): Promise<NotificationLogEntry[]> =>
     ipcRenderer.invoke("notif:log", limit),
+
+  // Weekly schedule.
+  //
+  // Two ways to change a day, matching the two things a user means by "change
+  // Tuesday": `scheduleBlock*` edits the recurring template (every week from
+  // now on), `scheduleOverride*` records a single-date exception (this week
+  // only). Everything else is read-only reporting.
+  schedulePlan: (weekTs?: number): Promise<SchedulePlanWeek> =>
+    ipcRenderer.invoke("schedule:plan", weekTs),
+  scheduleTemplate: (): Promise<ScheduleBlock[]> =>
+    ipcRenderer.invoke("schedule:template"),
+  scheduleOverrides: (from?: string, to?: string): Promise<ScheduleOverride[]> =>
+    ipcRenderer.invoke("schedule:overrides", from, to),
+
+  scheduleBlockCreate: (b: NewScheduleBlock): Promise<ScheduleBlock> =>
+    ipcRenderer.invoke("schedule:block-create", b),
+  scheduleBlockUpdate: (
+    id: number,
+    patch: ScheduleBlockPatch
+  ): Promise<ScheduleBlock | null> =>
+    ipcRenderer.invoke("schedule:block-update", id, patch),
+  scheduleBlockDelete: (id: number): Promise<boolean> =>
+    ipcRenderer.invoke("schedule:block-delete", id),
+
+  scheduleOverrideSet: (o: NewScheduleOverride): Promise<ScheduleOverride> =>
+    ipcRenderer.invoke("schedule:override-set", o),
+  scheduleOverrideDelete: (id: number): Promise<boolean> =>
+    ipcRenderer.invoke("schedule:override-delete", id),
+  scheduleOverrideClearDay: (date: string): Promise<number> =>
+    ipcRenderer.invoke("schedule:override-clear-day", date),
+
+  scheduleDayAdherence: (dayTs?: number): Promise<ScheduleDayAdherence> =>
+    ipcRenderer.invoke("schedule:day-adherence", dayTs),
+  scheduleWeekAdherence: (weekTs?: number): Promise<ScheduleWeekAdherence> =>
+    ipcRenderer.invoke("schedule:week-adherence", weekTs),
+  scheduleNow: (): Promise<ScheduleNowStatus> => ipcRenderer.invoke("schedule:now"),
+
+  // Per-category plan notes: one Markdown document per category per day.
+  // `planForCategory` also returns the previous day's entry, which the editor
+  // uses to seed today's when it does not exist yet.
+  planForCategory: (category: string, date?: string): Promise<CategoryPlan> =>
+    ipcRenderer.invoke("plan:for-category", category, date),
+  planNotes: (category?: string, limit?: number): Promise<PlanNote[]> =>
+    ipcRenderer.invoke("plan:notes", category, limit),
+  planNoteSave: (note: NewPlanNote): Promise<PlanNote | null> =>
+    ipcRenderer.invoke("plan:note-save", note),
+  planNoteDelete: (id: number): Promise<boolean> =>
+    ipcRenderer.invoke("plan:note-delete", id),
+
+  // GitHub sync
+  syncConfig: (): Promise<GithubSyncConfigView> => ipcRenderer.invoke("sync:config"),
+  syncNow: (): Promise<GithubSyncResultView> => ipcRenderer.invoke("sync:now"),
 };
 
 contextBridge.exposeInMainWorld("api", api);

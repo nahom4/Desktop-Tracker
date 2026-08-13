@@ -6,8 +6,9 @@ import { BreakdownList } from "../components/BreakdownList";
 import { TimelineStrip } from "../components/TimelineStrip";
 import { ExportMenu } from "../components/ExportMenu";
 import { StormList } from "../components/StormList";
-import { HealthBars } from "../components/HealthBars";
 import { LiveDailyReviewCard } from "../components/AiReviewCard";
+import { ScheduleNowCard } from "../components/ScheduleNowCard";
+import type { Page } from "../components/Sidebar";
 import { formatDuration } from "../lib/format";
 
 const DAY_MS = 86_400_000;
@@ -18,7 +19,7 @@ function startOfToday(): number {
   return d.getTime();
 }
 
-export function Today() {
+export function Today({ onNavigate }: { onNavigate?: (p: Page) => void }) {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,12 +54,12 @@ export function Today() {
 
   if (loading && !report) {
     return (
-      <div className="p-8 text-slate-500 text-sm">Loading today's activity...</div>
+      <div className="p-8 text-subtle text-sm">Loading today's activity...</div>
     );
   }
 
   if (!report) {
-    return <div className="p-8 text-slate-500 text-sm">No data yet.</div>;
+    return <div className="p-8 text-subtle text-sm">No data yet.</div>;
   }
 
   const dateLabel = new Date().toLocaleDateString(undefined, {
@@ -72,15 +73,15 @@ export function Today() {
       <header className="flex items-baseline justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
-          <p className="text-sm text-slate-500 mt-1">{dateLabel}</p>
+          <p className="text-sm text-subtle mt-1">{dateLabel}</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="text-sm text-slate-400">
-            <span className="text-slate-200 tabular-nums">
+          <div className="text-sm text-muted">
+            <span className="text-text tabular-nums">
               {formatDuration(report.totalActiveMs)}
             </span>{" "}
-            active -{" "}
-            <span className="text-slate-500 tabular-nums">
+            active ·{" "}
+            <span className="text-subtle tabular-nums">
               {formatDuration(report.totalIdleMs)}
             </span>{" "}
             idle
@@ -104,36 +105,34 @@ export function Today() {
           value={report.focusScore}
           sub={report.focusTip}
         />
-        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-          <div className="text-xs uppercase tracking-wider text-slate-500">
+        <div className="rounded-xl border border-border bg-surface/40 p-5">
+          <div className="text-xs uppercase tracking-wider text-subtle">
             Active time
           </div>
-          <div className="mt-2 text-4xl font-semibold tabular-nums text-slate-100">
+          <div className="mt-2 text-4xl font-semibold tabular-nums text-text">
             {formatDuration(report.totalActiveMs)}
           </div>
-          <div className="mt-1 text-sm text-slate-400">
+          <div className="mt-1 text-sm text-muted">
             {formatDuration(report.totalIdleMs)} idle / locked
           </div>
         </div>
       </div>
 
       {report.oneChange && (
-        <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/90">
+        <div className="rounded-lg border border-warn/40 bg-warn-soft/20 px-4 py-3 text-sm text-warn/90">
           {report.oneChange}
         </div>
       )}
+
+      <ScheduleNowCard
+        onOpenSchedule={onNavigate ? () => onNavigate("schedule") : undefined}
+      />
 
       <LiveDailyReviewCard
         review={report.aiReview}
         onRefreshed={(next) =>
           setReport((r) => (r ? { ...r, aiReview: next } : r))
         }
-      />
-
-      <HealthBars
-        title="Health by category - today"
-        health={report.health ?? []}
-        period="day"
       />
 
       <TimelineStrip

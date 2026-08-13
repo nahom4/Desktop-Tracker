@@ -6,9 +6,9 @@ directories:
 files:
   - dist/**/*
   - package.json
-extraResources:
-  - from: "../collector/target/release/desktop-tracker-collector.exe"
-    to: "collector/desktop-tracker-collector.exe"
+  # Loaded at runtime by the tray (src/main/tray.ts). buildResources only feeds
+  # the installer, so without this the packaged app has no tray icon to load.
+  - build/icon.png
 asar: true
 win:
   target:
@@ -16,9 +16,42 @@ win:
       arch:
         - x64
   artifactName: "DesktopTracker-Setup-${version}.${ext}"
+  # Cargo suffixes the binary with .exe only on Windows.
+  extraResources:
+    - from: "../collector/target/release/desktop-tracker-collector.exe"
+      to: "collector/desktop-tracker-collector.exe"
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  # Without this the binary inherits the scoped package name and lands as
+  # "@desktop-trackerdesktop", which is also what shows up in process lists.
+  executableName: desktop-tracker
+  icon: build/icon.png
+  category: Utility
+  synopsis: Local-first desktop activity tracker
+  artifactName: "DesktopTracker-${version}-${arch}.${ext}"
+  extraResources:
+    - from: "../collector/target/release/desktop-tracker-collector"
+      to: "collector/desktop-tracker-collector"
+    # The GNOME Shell extension is the only way to read the focused window
+    # under Wayland. Ship it so the installed app can offer to enable it.
+    - from: "../gnome-extension"
+      to: "gnome-extension"
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxtst6
+    - xdg-utils

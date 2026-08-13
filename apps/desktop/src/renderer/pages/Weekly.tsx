@@ -43,10 +43,10 @@ export function Weekly() {
   }, []);
 
   if (loading) {
-    return <div className="p-8 text-slate-500 text-sm">Loading weekly report…</div>;
+    return <div className="p-8 text-subtle text-sm">Loading weekly report…</div>;
   }
   if (!report) {
-    return <div className="p-8 text-slate-500 text-sm">No data yet.</div>;
+    return <div className="p-8 text-subtle text-sm">No data yet.</div>;
   }
 
   const chartData = report.perDay.map((d) => ({
@@ -61,7 +61,7 @@ export function Weekly() {
       <header className="flex items-baseline justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Weekly report</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-subtle mt-1">
             {report.weekStart} → {report.weekEnd}
           </p>
         </div>
@@ -81,21 +81,21 @@ export function Weekly() {
           delta={report.focusScoreDelta}
           sub={report.focusTip}
         />
-        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-          <div className="text-xs uppercase tracking-wider text-slate-500">
+        <div className="rounded-xl border border-border bg-surface/40 p-5">
+          <div className="text-xs uppercase tracking-wider text-subtle">
             Active this week
           </div>
           <div className="mt-2 text-4xl font-semibold tabular-nums">
             {formatDuration(report.totalActiveMs)}
           </div>
-          <div className="mt-1 text-sm text-slate-400">
+          <div className="mt-1 text-sm text-muted">
             {formatDuration(report.totalIdleMs)} idle / locked
           </div>
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h3 className="text-sm font-medium text-slate-200 mb-4">Per-day scores</h3>
+      <div className="rounded-xl border border-border bg-surface/40 p-5">
+        <h3 className="text-sm font-medium text-text mb-4">Per-day scores</h3>
         <div style={{ width: "100%", height: 260 }}>
           <ResponsiveContainer>
             <BarChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
@@ -115,12 +115,12 @@ export function Weekly() {
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div className="mt-2 flex gap-4 text-xs text-slate-400">
+        <div className="mt-2 flex gap-4 text-xs text-muted">
           <span className="flex items-center gap-2">
-            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> Productivity
+            <span className="inline-block h-2 w-2 rounded-full bg-good" /> Productivity
           </span>
           <span className="flex items-center gap-2">
-            <span className="inline-block h-2 w-2 rounded-full bg-sky-500" /> Focus
+            <span className="inline-block h-2 w-2 rounded-full bg-accent" /> Focus
           </span>
         </div>
       </div>

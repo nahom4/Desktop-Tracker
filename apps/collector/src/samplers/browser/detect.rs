@@ -12,9 +12,18 @@ pub enum BrowserKind {
 impl BrowserKind {
     pub fn from_exe(exe: &str) -> Option<Self> {
         match exe.to_ascii_lowercase().as_str() {
+            // Windows
             "chrome.exe" | "msedge.exe" | "brave.exe" | "vivaldi.exe" | "opera.exe"
             | "opera_gx.exe" | "arc.exe" => Some(Self::Chromium),
             "firefox.exe" | "librewolf.exe" | "zen.exe" => Some(Self::Firefox),
+            // Linux — distro packages, upstream tarballs, Snap and Flatpak all
+            // use different binary names for the same browser.
+            "chrome" | "google-chrome" | "google-chrome-stable" | "google-chrome-beta"
+            | "chromium" | "chromium-browser" | "brave" | "brave-browser"
+            | "microsoft-edge" | "microsoft-edge-stable" | "vivaldi" | "vivaldi-bin"
+            | "vivaldi-stable" | "opera" | "opera-beta" => Some(Self::Chromium),
+            "firefox" | "firefox-bin" | "firefox-esr" | "librewolf" | "zen" | "zen-bin"
+            | "waterfox" => Some(Self::Firefox),
             _ => None,
         }
     }
