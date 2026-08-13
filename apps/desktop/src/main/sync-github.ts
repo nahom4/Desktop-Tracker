@@ -105,10 +105,11 @@ async function git(
 const TOKEN_HELPER =
   '!f() { echo username=x-access-token; echo "password=$DT_GIT_TOKEN"; }; f';
 
-async function ensureRepo(cfg: GithubSyncConfig): Promise<void> {
+async function ensureRepo(cfg: GithubSyncConfig, token: string): Promise<void> {
   const dir = repoDir();
   fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(path.join(dir, ".git"))) {
+  const fresh = !fs.existsSync(path.join(dir, ".git"));
+  if (fresh) {
     await git(["init", "-q"]);
     await git(["checkout", "-q", "-B", cfg.branch]);
   }
@@ -122,6 +123,55 @@ async function ensureRepo(cfg: GithubSyncConfig): Promise<void> {
   } else {
     await git(["remote", "add", "origin", cfg.repoUrl]);
   }
+
+  // A brand-new local repo pushing at a branch that already has commits — a
+  // repo initialised with a README, or a previous install's mirror — would
+  // build a history with no ancestor in common with the remote. Every push is
+  // then rejected and every rebase conflicts on the files both sides generate.
+  // Start from the remote instead, when there is one.
+  if (fresh) await adoptRemoteHistory(cfg, token, { hard: true });
+}
+
+/**
+ * Move onto the remote branch's history while keeping the files we just
+ * exported.
+ *
+ * `hard` is for a fresh repo with nothing to preserve. Otherwise the reset is
+ * soft — our regenerated export stays in the working tree — and any file only
+ * the remote has (a day older than the backfill window) is restored, so
+ * adopting its history can never delete data.
+ *
+ * Returns false when the remote branch does not exist yet, which is the normal
+ * first-push case and not an error.
+ */
+async function adoptRemoteHistory(
+  cfg: GithubSyncConfig,
+  token: string,
+  opts: { hard?: boolean } = {}
+): Promise<boolean> {
+  try {
+    await git(
+      ["-c", `credential.helper=${TOKEN_HELPER}`, "fetch", "-q", "origin", cfg.branch],
+      { token }
+    );
+  } catch {
+    return false; // empty remote, or the branch does not exist yet
+  }
+  const ref = `origin/${cfg.branch}`;
+  if (!(await git(["rev-parse", "--verify", "-q", ref]).catch(() => ""))) return false;
+
+  await git(["reset", opts.hard ? "--hard" : "--soft", ref]);
+  if (opts.hard) return true;
+
+  const remoteFiles = (await git(["ls-tree", "-r", "--name-only", ref]))
+    .split("\n")
+    .filter(Boolean);
+  for (const rel of remoteFiles) {
+    if (!fs.existsSync(path.join(repoDir(), rel))) {
+      await git(["checkout", ref, "--", rel]).catch(() => undefined);
+    }
+  }
+  return true;
 }
 
 function writeFileIfChanged(rel: string, contents: string): void {
@@ -242,7 +292,7 @@ export async function syncToGithub(
 
   running = true;
   try {
-    await ensureRepo(cfg);
+    await ensureRepo(cfg, token);
     exportAll();
 
     await git(["add", "-A"]);
@@ -277,17 +327,18 @@ export async function syncToGithub(
 
     try {
       await push(["-u"]);
-    } catch (e) {
-      // Most likely the remote moved (another machine, or a manual edit).
-      // Rebase onto it once and retry before giving up.
-      await git(
-        ["-c", `credential.helper=${TOKEN_HELPER}`, "fetch", "-q", "origin", cfg.branch],
-        { token }
-      ).catch(() => undefined);
-      await git(["rebase", "-q", `origin/${cfg.branch}`]).catch(async () => {
-        await git(["rebase", "--abort"]).catch(() => undefined);
-        throw e;
-      });
+    } catch {
+      // The remote moved — another machine, a manual edit, or a mirror from a
+      // previous install. Rebasing is the wrong tool here: every file in this
+      // repo is regenerated from the database on each sync, so both sides
+      // touch the same paths and a rebase conflicts on all of them. Adopt the
+      // remote's history and re-commit the current export on top instead,
+      // which cannot conflict and cannot lose either side's files.
+      await adoptRemoteHistory(cfg, token);
+      await git(["add", "-A"]);
+      if (await git(["status", "--porcelain"])) {
+        await git(["commit", "-q", "-m", `sync ${stamp}${reason} (reconcile)`]);
+      }
       await push();
     }
 

@@ -92,6 +92,47 @@ void app.whenReady().then(async () => {
     }).trim();
     assert.equal(commits, "1", "no empty second commit");
 
+    // ---- divergent remote ----
+    // Someone else (another machine, or this app before its data dir moved)
+    // pushed commits we have no ancestor for. Rebasing cannot resolve that:
+    // both sides regenerate the same paths, so every file conflicts. The sync
+    // has to adopt the remote history and re-commit on top.
+    const other = path.join(tmp, "other-clone");
+    execFileSync("git", ["clone", "-q", bare, other]);
+    execFileSync("git", ["-c", "user.email=o@x", "-c", "user.name=o",
+      "commit", "-q", "--allow-empty", "-m", "from another machine"], { cwd: other });
+    fs.writeFileSync(path.join(other, "events", "1999-01-01.json"), '{"date":"1999-01-01"}\n');
+    fs.writeFileSync(path.join(other, "README.md"), "edited elsewhere\n");
+    execFileSync("git", ["add", "-A"], { cwd: other });
+    execFileSync("git", ["-c", "user.email=o@x", "-c", "user.name=o",
+      "commit", "-q", "-m", "remote-only day"], { cwd: other });
+    execFileSync("git", ["push", "-q", "origin", "main"], { cwd: other });
+
+    upsertPlanNote({ category: "Work", date: today, body: "after the divergence" });
+    r = await syncToGithub({ reason: "check" });
+    assert.equal(r.ok, true, `divergent push failed: ${r.message}`);
+    assert.equal(r.pushed, true, "reconciled and pushed");
+
+    const tree2 = execFileSync("git", ["ls-tree", "-r", "--name-only", "main"], {
+      cwd: bare, encoding: "utf8",
+    }).trim().split("\n");
+    assert.ok(
+      tree2.includes("events/1999-01-01.json"),
+      "a file only the remote had must survive the reconcile"
+    );
+    assert.ok(tree2.includes(`notes/${today}.md`), "our own export survives too");
+    assert.match(
+      execFileSync("git", ["show", `main:notes/${today}.md`], { cwd: bare, encoding: "utf8" }),
+      /after the divergence/,
+      "our newer note wins on a path both sides touch"
+    );
+    assert.equal(
+      execFileSync("git", ["log", "--oneline", "main"], { cwd: bare, encoding: "utf8" })
+        .includes("from another machine"),
+      true,
+      "the remote's history is preserved, not replaced"
+    );
+
     closeDb();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log("check-sync: all assertions passed");
