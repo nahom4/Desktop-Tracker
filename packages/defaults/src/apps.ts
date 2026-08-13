@@ -109,6 +109,18 @@ export const DEFAULT_APP_RULES: NewCategoryRule[] = [
   // Having the editor focused is not the same as writing code. A markdown file
   // open in it is reading — notes, docs, a lesson — so the file in the title
   // decides, not the binary. Priority beats the editor `exe` rules below.
+  //
+  // Subject first, then the generic fallback. A VS Code title carries both the
+  // file and its folder ("resume.md - job-hunt - Visual Studio Code"), so the
+  // topic is usually right there; only when nothing matches does markdown mean
+  // "learning" by default. Ordering here is by priority, not position: the
+  // engine takes the highest-priority match, so these 16s beat the 14 below.
+  { matchType: "title_regex", pattern: "^(?=.*\\.mdx?\\b)(?=.*(resum[eé]|\\bcv\\b|cover.?letter|interview|hiring|recruit|job.?(hunt|search|app)|offer.?letter|salary|negotiat|portfolio|linkedin|career)).* - (Visual Studio Code|Cursor|VSCodium|Code - OSS)$", category: "Career", weight: 1.0, priority: 16 },
+  { matchType: "title_regex", pattern: "^(?=.*\\.mdx?\\b)(?=.*(bible|scripture|devotion|sermon|prayer|theolog|church|gospel|psalm|faith)).* - (Visual Studio Code|Cursor|VSCodium|Code - OSS)$", category: "Religion", weight: 1.0, priority: 16 },
+  { matchType: "title_regex", pattern: "^(?=.*\\.mdx?\\b)(?=.*(business|startup|pitch|investor|revenue|pricing|competitor|market.?(research|fit)|go.?to.?market|monetiz|\\bsaas\\b)).* - (Visual Studio Code|Cursor|VSCodium|Code - OSS)$", category: "Business", weight: 1.0, priority: 16 },
+  // Project docs written *for* the thing you are building are work, not study.
+  { matchType: "title_regex", pattern: "(readme|changelog|contributing|architecture|\\badr\\b|\\brfc\\b|spec|design.?doc|runbook|postmortem|release.?notes|roadmap|todo)\\.mdx?\\b.* - (Visual Studio Code|Cursor|VSCodium|Code - OSS)$", category: "Work", weight: 1.0, priority: 16 },
+  // Everything else in markdown: reading and note-taking.
   { matchType: "title_regex", pattern: "\\.mdx?\\b.* - (Visual Studio Code|Cursor|VSCodium|Code - OSS)$", category: "Learning", weight: 0.9, priority: 14 },
 
   // ---- Linux ----

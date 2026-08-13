@@ -37,11 +37,15 @@ import {
 import { startAiClassifier, stopAiClassifier, runUntilCaughtUp } from "./ai-classifier";
 import { syncToGithub } from "./sync-github";
 
-// Dev + CLI runs use the workspace package name so we hit the same SQLite
-// file as `npm run dev` (not Electron's default Roaming\Electron folder).
-if (!app.isPackaged) {
-  app.setName("@desktop-tracker/desktop");
-}
+// One name for every run mode — dev, CLI and packaged — because the name is
+// what picks userData, and therefore which SQLite file is the tracker's.
+//
+// Dev used to pick the scoped package name, which quietly gave `npm run dev`
+// its *own* database: two instances could run at once, each with its own
+// collector, splitting the day's events and leaving schedule edits made in one
+// invisible to the other. Sharing the name also shares the single-instance
+// lock, so the second launch now defers to the first instead of double-counting.
+app.setName("Desktop Tracker");
 
 function logStartupError(label: string, error: unknown): void {
   try {
