@@ -40,11 +40,11 @@ export function AiReviewCard({
 
   if (!review) {
     return (
-      <div className="rounded-xl border border-sky-500/20 bg-gradient-to-br from-sky-500/5 to-violet-500/5 p-5">
+      <div className="rounded-xl border border-accent/20 bg-gradient-to-br from-sky-500/5 to-violet-500/5 p-5">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-medium text-sky-200">AI review</h3>
-            <p className="text-sm text-slate-400 mt-1">
+            <h3 className="text-sm font-medium text-accent">AI review</h3>
+            <p className="text-sm text-muted mt-1">
               {busy
                 ? "Calling Groq (llama-3.3-70b) — usually 5–15 seconds…"
                 : generatable
@@ -52,7 +52,7 @@ export function AiReviewCard({
                 : "No AI review on this saved report."}
             </p>
             {error && (
-              <p className="text-sm text-rose-300 mt-2 leading-relaxed">{error}</p>
+              <p className="text-sm text-bad mt-2 leading-relaxed">{error}</p>
             )}
           </div>
           {generatable && (
@@ -61,7 +61,7 @@ export function AiReviewCard({
               onClick={() => void run()}
               disabled={busy}
               data-export-chrome
-              className="px-3 py-1.5 rounded-md border border-sky-500/40 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20 text-sm disabled:opacity-50 whitespace-nowrap shrink-0"
+              className="px-3 py-1.5 rounded-md border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 text-sm disabled:opacity-50 whitespace-nowrap shrink-0"
             >
               {busy ? "Thinking…" : "Generate now"}
             </button>
@@ -72,19 +72,19 @@ export function AiReviewCard({
   }
 
   return (
-    <div className="rounded-xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 to-violet-500/10 p-5 space-y-4">
+    <div className="rounded-xl border border-accent/30 bg-gradient-to-br from-sky-500/10 to-violet-500/10 p-5 space-y-4">
       <div className="flex items-baseline justify-between gap-4 flex-wrap">
-        <h3 className="text-sm font-medium text-sky-200">
+        <h3 className="text-sm font-medium text-accent">
           AI review — {period === "daily" ? "today" : "this week"}
         </h3>
-        <div className="flex items-center gap-2 text-xs text-slate-500" data-export-chrome>
+        <div className="flex items-center gap-2 text-xs text-subtle" data-export-chrome>
           <span className="font-mono">{review.model}</span>
           {generatable && (
             <button
               type="button"
               onClick={() => void run()}
               disabled={busy}
-              className="px-2 py-1 rounded border border-slate-700 hover:bg-slate-800 disabled:opacity-50"
+              className="px-2 py-1 rounded border border-border-strong hover:bg-elevate disabled:opacity-50"
             >
               {busy ? "Thinking…" : "Regenerate"}
             </button>
@@ -93,18 +93,18 @@ export function AiReviewCard({
       </div>
 
       {error && (
-        <p className="text-sm text-rose-300 border border-rose-500/30 rounded-md px-3 py-2 bg-rose-500/5">
+        <p className="text-sm text-bad border border-bad/30 rounded-md px-3 py-2 bg-bad/5">
           {error}
         </p>
       )}
 
       {busy && (
-        <p className="text-sm text-sky-200/80 animate-pulse">
+        <p className="text-sm text-accent/80 animate-pulse">
           Regenerating review…
         </p>
       )}
 
-      <p className="text-base text-slate-100 leading-relaxed">
+      <p className="text-base text-text leading-relaxed">
         {review.summary || "(no summary)"}
       </p>
 
@@ -114,24 +114,24 @@ export function AiReviewCard({
       </div>
 
       {review.recommendation && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-4">
-          <div className="text-xs uppercase tracking-wider text-amber-300 mb-1">
+        <div className="rounded-md border border-warn/30 bg-warn/5 p-4">
+          <div className="text-xs uppercase tracking-wider text-warn mb-1">
             Do this tomorrow
           </div>
-          <div className="text-sm text-slate-100">{review.recommendation}</div>
+          <div className="text-sm text-text">{review.recommendation}</div>
         </div>
       )}
 
       {review.notes && (
-        <details className="text-sm text-slate-400">
-          <summary className="cursor-pointer text-slate-300 hover:text-slate-200 select-none">
+        <details className="text-sm text-muted">
+          <summary className="cursor-pointer text-text hover:text-text select-none">
             Notes
           </summary>
           <p className="mt-2 leading-relaxed whitespace-pre-wrap">{review.notes}</p>
         </details>
       )}
 
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-subtle">
         Generated{" "}
         {new Date(review.generatedAt).toLocaleString(undefined, {
           month: "short",
@@ -154,19 +154,19 @@ function Block({
   items: string[];
 }) {
   const colorMap = {
-    emerald: { dot: "bg-emerald-400", title: "text-emerald-300" },
-    rose: { dot: "bg-rose-400", title: "text-rose-300" },
+    emerald: { dot: "bg-good", title: "text-good" },
+    rose: { dot: "bg-bad", title: "text-bad" },
   } as const;
   const c = colorMap[tint];
   return (
     <div>
       <div className={`text-xs uppercase tracking-wider mb-2 ${c.title}`}>{label}</div>
       {items.length === 0 ? (
-        <div className="text-sm text-slate-500">—</div>
+        <div className="text-sm text-subtle">—</div>
       ) : (
         <ul className="space-y-1.5">
           {items.map((s, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm text-slate-200">
+            <li key={i} className="flex items-start gap-2 text-sm text-text">
               <span className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${c.dot}`} />
               <span>{s}</span>
             </li>

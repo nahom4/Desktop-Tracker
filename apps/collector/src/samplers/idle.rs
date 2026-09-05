@@ -23,7 +23,12 @@ pub fn sample_ms() -> u64 {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub fn sample_ms() -> u64 {
+    super::linux::sample_idle_ms()
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn sample_ms() -> u64 {
     0
 }

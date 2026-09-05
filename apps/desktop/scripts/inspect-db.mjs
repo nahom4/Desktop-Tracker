@@ -6,9 +6,21 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import os from "node:os";
 
-const dbPath =
-  process.argv[2] ||
-  path.join(os.homedir(), "AppData", "Roaming", "@desktop-tracker", "desktop", "data.sqlite");
+/** Mirrors Electron's `app.getPath("userData")` for the dev app name. */
+function defaultDbPath() {
+  const home = os.homedir();
+  const appDir = path.join("@desktop-tracker", "desktop");
+  if (process.platform === "win32") {
+    return path.join(home, "AppData", "Roaming", appDir, "data.sqlite");
+  }
+  if (process.platform === "darwin") {
+    return path.join(home, "Library", "Application Support", appDir, "data.sqlite");
+  }
+  const xdg = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+  return path.join(xdg, appDir, "data.sqlite");
+}
+
+const dbPath = process.argv[2] || defaultDbPath();
 
 const db = new Database(dbPath, { readonly: true, fileMustExist: true });
 db.pragma("journal_mode = WAL");

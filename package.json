@@ -2,7 +2,7 @@
   "name": "desktop-tracker",
   "private": true,
   "version": "0.0.1",
-  "description": "Local-first Windows desktop activity tracker with daily/weekly reports.",
+  "description": "Local-first desktop activity tracker with daily/weekly reports (Windows + Linux).",
   "license": "UNLICENSED",
   "engines": {
     "node": ">=20.0.0"
@@ -16,12 +16,28 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "check": "npm run check:plan && npm run check:sync && npm run check:reports",
+    "check:plan": "esbuild scripts/check-plan.ts --bundle --platform=node --external:better-sqlite3 --outfile=node_modules/.cache/check-plan.cjs --log-level=error && ELECTRON_RUN_AS_NODE=1 electron node_modules/.cache/check-plan.cjs",
+    "check:sync": "esbuild scripts/check-sync.ts --bundle --platform=node --external:better-sqlite3 --external:electron --outfile=node_modules/.cache/check-sync.cjs --log-level=error && electron node_modules/.cache/check-sync.cjs",
     "collector:build": "cd apps/collector && cargo build --release",
     "collector:run": "cd apps/collector && cargo run --release",
-    "clean": "rimraf \"**/dist\" \"**/out\" \"**/build\" \"apps/collector/target\""
+    "gnome:install": "node scripts/install-gnome-extension.mjs",
+    "gnome:uninstall": "node scripts/install-gnome-extension.mjs --uninstall",
+    "setup:linux": "npm install && npm run gnome:install && npm run collector:build",
+    "install:linux": "node scripts/install-linux.mjs",
+    "uninstall:linux": "node scripts/install-linux.mjs --uninstall",
+    "clean": "rimraf \"**/dist\" \"**/out\" \"**/build\" \"apps/collector/target\"",
+    "check:reports": "esbuild scripts/check-reports.ts --bundle --platform=node --external:better-sqlite3 --external:electron --outfile=node_modules/.cache/check-reports.cjs --log-level=error && electron node_modules/.cache/check-reports.cjs"
   },
   "devDependencies": {
     "rimraf": "^6.0.1",
     "typescript": "^5.6.3"
+  },
+  "allowScripts": {
+    "esbuild@0.24.0": true,
+    "esbuild@0.24.2": true,
+    "esbuild@0.25.12": true,
+    "better-sqlite3@11.10.0": true,
+    "electron@33.4.11": true
   }
 }

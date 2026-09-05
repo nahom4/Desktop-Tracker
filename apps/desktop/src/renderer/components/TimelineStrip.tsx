@@ -28,15 +28,15 @@ export function TimelineStrip({
   }, []);
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+    <div className="rounded-xl border border-border bg-surface/40 p-5">
       <div className="flex items-baseline justify-between mb-4">
-        <h3 className="text-sm font-medium text-slate-200">Timeline</h3>
-        <div className="text-xs text-slate-500">
+        <h3 className="text-sm font-medium text-text">Timeline</h3>
+        <div className="text-xs text-subtle">
           {events.length} sessions
         </div>
       </div>
 
-      <div className="relative h-14 rounded-md bg-slate-950/60 border border-slate-800 overflow-hidden">
+      <div className="relative h-14 rounded-md bg-bg/60 border border-border overflow-hidden">
         {events.map((e) => {
           const start = Math.max(e.startTs, periodStart);
           const end = Math.min(e.endTs, periodEnd);
@@ -59,7 +59,7 @@ export function TimelineStrip({
         })}
       </div>
 
-      <div className="mt-2 flex justify-between text-[10px] text-slate-500 tabular-nums">
+      <div className="mt-2 flex justify-between text-xs text-subtle tabular-nums">
         {hours.map((h) => (
           <span key={h}>{String(h).padStart(2, "0")}:00</span>
         ))}
@@ -68,19 +68,19 @@ export function TimelineStrip({
       <div className="mt-3 h-10 text-xs">
         {hover ? (
           <div className="flex items-center gap-4">
-            <span className="text-slate-200 font-medium">{hover.exe}</span>
-            {hover.project && <span className="text-slate-400">proj: {hover.project}</span>}
-            {hover.domain && <span className="text-slate-400">{hover.domain}</span>}
+            <span className="text-text font-medium">{hover.exe}</span>
+            {hover.project && <span className="text-muted">proj: {hover.project}</span>}
+            {hover.domain && <span className="text-muted">{hover.domain}</span>}
             {hover.title && (
-              <span className="text-slate-500 truncate max-w-[40ch]">{hover.title}</span>
+              <span className="text-subtle truncate max-w-[40ch]">{hover.title}</span>
             )}
-            <span className="ml-auto text-slate-400 tabular-nums">
+            <span className="ml-auto text-muted tabular-nums">
               {formatTime(hover.startTs)} → {formatTime(hover.endTs)} ·{" "}
               {formatDuration(hover.durationMs)}
             </span>
           </div>
         ) : (
-          <div className="text-slate-600">Hover a bar for details.</div>
+          <div className="text-faint">Hover a bar for details.</div>
         )}
       </div>
     </div>

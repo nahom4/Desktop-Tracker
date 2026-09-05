@@ -12,6 +12,7 @@ import {
   migrateClassifierV2Retag,
   migrateGeneralizedTaxonomyRulesV1,
   migrateOtherToUnclassified,
+  migratePlanItemsIntoNotes,
   migrateStrongRuleRetag,
   migrateSystemCategoryV1,
   migrateYoutubeAiRetag,
@@ -19,6 +20,7 @@ import {
   refreshDefaultCategoryHints,
   seedDefaultCategoriesIfMissing,
   seedDefaultRulesIfEmpty,
+  seedExampleScheduleIfEmpty,
   setSetting,
   upsertTaxonomyDomainRules,
 } from "./db";
@@ -33,12 +35,17 @@ import {
   stopScheduler,
 } from "./scheduler";
 import { startAiClassifier, stopAiClassifier, runUntilCaughtUp } from "./ai-classifier";
+import { syncToGithub } from "./sync-github";
 
-// Dev + CLI runs use the workspace package name so we hit the same SQLite
-// file as `npm run dev` (not Electron's default Roaming\Electron folder).
-if (!app.isPackaged) {
-  app.setName("@desktop-tracker/desktop");
-}
+// One name for every run mode — dev, CLI and packaged — because the name is
+// what picks userData, and therefore which SQLite file is the tracker's.
+//
+// Dev used to pick the scoped package name, which quietly gave `npm run dev`
+// its *own* database: two instances could run at once, each with its own
+// collector, splitting the day's events and leaving schedule edits made in one
+// invisible to the other. Sharing the name also shares the single-instance
+// lock, so the second launch now defers to the first instead of double-counting.
+app.setName("Desktop Tracker");
 
 function logStartupError(label: string, error: unknown): void {
   try {
@@ -72,6 +79,8 @@ process.on("unhandledRejection", (error) => {
 });
 
 let mainWindow: BrowserWindow | null = null;
+/** Held so the session in progress can be written out on quit. */
+let activeSessionizer: Sessionizer | null = null;
 
 const REVIEW_DAILY_CLI = process.argv.includes("--review-daily-now");
 
@@ -101,6 +110,7 @@ function initDb(): string {
   openDb(dbPath);
   seedDefaultRulesIfEmpty();
   seedDefaultCategoriesIfMissing();
+  seedExampleScheduleIfEmpty();
   refreshDefaultCategoryHints();
   migrateAmbiguousDomainRules();
   migrateLegacyRuleCategories();
@@ -114,6 +124,7 @@ function initDb(): string {
   migrateStrongRuleRetag();
   migrateGeneralizedTaxonomyRulesV1();
   upsertTaxonomyDomainRules();
+  migratePlanItemsIntoNotes();
   // If the user exports GROQ_API_KEY once, persist it so CLI + scheduler work
   // without re-setting the env var (still overridable from Settings).
   const envGroq = process.env.GROQ_API_KEY?.trim();
@@ -144,14 +155,18 @@ async function runReviewDailyCli(): Promise<void> {
 }
 
 /**
- * Register the app to launch at Windows login so it appears under
- * Task Manager → Startup apps. Only for the packaged build — dev/CLI runs
- * would otherwise register Electron's dev binary path in the user's registry.
+ * Register the app to start at login. Only for the packaged build — dev/CLI
+ * runs would otherwise register Electron's dev binary path in the user's
+ * registry (Windows) or autostart directory (Linux).
  */
 function syncAutoLaunch(): void {
   if (!app.isPackaged) return;
   try {
     const wanted = getSetting("launch_at_login") !== "0"; // default on
+    if (process.platform === "linux") {
+      syncLinuxAutoLaunch(wanted);
+      return;
+    }
     const current = app.getLoginItemSettings();
     if (current.openAtLogin !== wanted) {
       app.setLoginItemSettings({
@@ -166,12 +181,55 @@ function syncAutoLaunch(): void {
   }
 }
 
+const LINUX_AUTOSTART_FILE = "desktop-tracker.desktop";
+
+/**
+ * Linux has no login-item registry: desktops start whatever `.desktop` files
+ * live in the XDG autostart directory. Electron's `setLoginItemSettings` does
+ * not cover this, so write the entry directly — it is the same mechanism
+ * GNOME's own "Startup Applications" tool uses.
+ */
+function syncLinuxAutoLaunch(wanted: boolean): void {
+  const autostartDir = path.join(
+    process.env.XDG_CONFIG_HOME || path.join(app.getPath("home"), ".config"),
+    "autostart"
+  );
+  const target = path.join(autostartDir, LINUX_AUTOSTART_FILE);
+
+  if (!wanted) {
+    if (fs.existsSync(target)) {
+      fs.rmSync(target);
+      logStartupInfo("auto-launch entry removed");
+    }
+    return;
+  }
+
+  // AppImage runs from a temp mount, so the stable path is APPIMAGE when set.
+  const exec = process.env.APPIMAGE || process.execPath;
+  const contents = [
+    "[Desktop Entry]",
+    "Type=Application",
+    "Name=Desktop Tracker",
+    "Comment=Local-first desktop activity tracker",
+    `Exec="${exec}" --hidden`,
+    "Terminal=false",
+    "X-GNOME-Autostart-enabled=true",
+    "",
+  ].join("\n");
+
+  if (fs.existsSync(target) && fs.readFileSync(target, "utf8") === contents) return;
+  fs.mkdirSync(autostartDir, { recursive: true });
+  fs.writeFileSync(target, contents, { mode: 0o644 });
+  logStartupInfo(`auto-launch entry written to ${target}`);
+}
+
 async function bootstrap() {
   logStartupInfo("bootstrap start");
   initDb();
   syncAutoLaunch();
 
   const sessionizer = new Sessionizer();
+  activeSessionizer = sessionizer;
 
   registerIpc();
 
@@ -184,16 +242,39 @@ async function bootstrap() {
   startAiClassifier();
   void runUntilCaughtUp();
 
-  // Start in the tray only — no window until the user opens the dashboard.
-  mainWindow = createMainWindow({ showOnReady: false });
-  createTray(() => {
+  // Startup push, delayed so it never competes with window creation. Silent
+  // when sync is off — syncToGithub reports that rather than throwing.
+  setTimeout(() => {
+    void syncToGithub({ reason: "startup" })
+      .then((r) => console.log(`[sync] ${r.message}`))
+      .catch((e) => logStartupError("github sync failed", e));
+  }, 15_000);
+
+  const openDashboard = () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       mainWindow = createMainWindow({ showOnReady: true });
     } else {
       mainWindow.show();
       mainWindow.focus();
     }
-  });
+  };
+
+  // Start in the tray only — no window until the user opens the dashboard.
+  mainWindow = createMainWindow({ showOnReady: false });
+
+  // A tray icon needs a StatusNotifierItem host, which not every Linux desktop
+  // provides. Without this fallback the app would start hidden with no way to
+  // reach the dashboard at all.
+  let hasTray = false;
+  try {
+    createTray(openDashboard);
+    hasTray = true;
+  } catch (e) {
+    logStartupError("tray unavailable", e);
+    console.warn("[main] no system tray available; opening the dashboard instead");
+  }
+  if (!hasTray && !process.argv.includes("--hidden")) openDashboard();
+
   logStartupInfo("bootstrap complete");
 }
 
@@ -215,9 +296,29 @@ app.on("before-quit", () => {
   stopAiClassifier();
   stopScheduler();
   stopCollector();
+  // The session in progress only reaches SQLite when it ends. Without this the
+  // stretch since the last app/title change is lost on every quit — which on a
+  // long focused block is the part worth keeping.
+  try {
+    activeSessionizer?.flush();
+  } catch (e) {
+    logStartupError("final session flush failed", e);
+  }
+  activeSessionizer = null;
   destroyTray();
   closeDb();
 });
+
+// A tray app that lives all day is normally ended by a signal, not by a click:
+// the session manager SIGTERMs it at logout or shutdown. Electron does not run
+// `before-quit` for signals, so route them through app.quit() — otherwise the
+// day's final session, and any pending shutdown work, is silently dropped.
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
+  process.on(signal, () => {
+    logStartupInfo(`received ${signal}; shutting down cleanly`);
+    app.quit();
+  });
+}
 
 app.on("activate", () => {
   if (!mainWindow || mainWindow.isDestroyed()) {

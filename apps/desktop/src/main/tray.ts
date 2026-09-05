@@ -1,17 +1,30 @@
 import { Tray, Menu, nativeImage, app } from "electron";
+import path from "node:path";
+
+/**
+ * Tray icon.
+ *
+ * This must be a real raster file: `nativeImage` decodes PNG and JPEG only, so
+ * an SVG data URL silently produces an empty 0x0 image — which yields a tray
+ * entry that exists and responds to clicks but paints nothing at all. Reuse the
+ * app icon and let the panel scale it.
+ */
+const ICON_PATH = path.join(__dirname, "../../build/icon.png");
+
+/** Panel height GNOME/AppIndicator expects; larger icons get clipped. */
+const TRAY_ICON_SIZE = 22;
 
 let tray: Tray | null = null;
 
 export function createTray(onOpen: () => void): Tray {
-  const icon = nativeImage.createFromDataURL(
-    "data:image/svg+xml;charset=utf-8," +
-      encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-          <rect width="32" height="32" rx="7" fill="#0f172a"/>
-          <path d="M8 20h16v3H8zM8 14h11v3H8zM8 8h16v3H8z" fill="#38bdf8"/>
-        </svg>`
-      )
-  );
+  const source = nativeImage.createFromPath(ICON_PATH);
+  if (source.isEmpty()) {
+    // Caller treats a throw as "no tray available" and opens the dashboard
+    // instead, so a missing icon never leaves the app unreachable.
+    throw new Error(`tray icon could not be loaded from ${ICON_PATH}`);
+  }
+  const icon = source.resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
+
   tray = new Tray(icon);
   tray.setToolTip("Desktop Tracker");
 

@@ -19,6 +19,7 @@ import {
   startOfLocalDay,
 } from "@desktop-tracker/analysis";
 import type {
+  DailyReport,
   NotificationConfig,
   NotificationLogEntry,
 } from "@desktop-tracker/shared";
@@ -284,4 +285,73 @@ export async function sendTestNotification(): Promise<{
     });
   }
   return { os, email, error };
+}
+
+// ---------------- daily report delivery ----------------
+
+/**
+ * Push the finished daily report out through whichever channels are on.
+ *
+ * A report nobody sees is not a report, and until now the only way to read one
+ * was to open the Reports page and go looking. OS notifications cost no setup,
+ * so that channel works out of the box; email is opt-in.
+ */
+export async function sendDailyReportNotification(
+  report: DailyReport
+): Promise<NotificationLogEntry | null> {
+  const cfg = getNotificationConfig();
+  // One per day: a catch-up pass or a manual re-run should not re-notify.
+  if (lastNotificationOfKindToday("daily_report")) return null;
+
+  const title = `Daily report — ${report.date}`;
+  const top = report.breakdown.byCategory
+    .slice(0, 4)
+    .map((b) => `• ${b.label}: ${formatDuration(b.durationMs)}`)
+    .join("\n");
+
+  const bodyLines = [
+    `Productivity ${report.productivityScore}   Focus ${report.focusScore}`,
+    `Active ${formatDuration(report.totalActiveMs)} · idle ${formatDuration(report.totalIdleMs)}`,
+    "",
+    top,
+  ];
+  if (report.oneChange) bodyLines.push("", `One change: ${report.oneChange}`);
+  if (report.aiReview?.summary) bodyLines.push("", report.aiReview.summary);
+  const body = bodyLines.join("\n");
+
+  let osOk = false;
+  let emailOk = false;
+  let lastError: string | null = null;
+
+  if (cfg.osEnabled) {
+    // The toast stays short; the full text goes to the log and the email.
+    osOk = await sendOsNotification(
+      title,
+      `Productivity ${report.productivityScore} · Focus ${report.focusScore} · ` +
+        `${formatDuration(report.totalActiveMs)} active`
+    );
+  }
+  if (cfg.emailEnabled) {
+    try {
+      emailOk = await sendEmail(cfg, title, body);
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+      console.error("[notifier] daily report email failed:", lastError);
+    }
+  }
+
+  if (!osOk && !emailOk) return null;
+
+  return insertNotificationLog({
+    ts: Date.now(),
+    kind: "daily_report",
+    channel: osOk && emailOk ? "both" : emailOk ? "email" : "os",
+    title,
+    body: body + (lastError ? `\n\n[email error] ${lastError}` : ""),
+    meta: {
+      date: report.date,
+      productivityScore: report.productivityScore,
+      focusScore: report.focusScore,
+    },
+  });
 }

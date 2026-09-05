@@ -7,6 +7,10 @@ node_modules/
 dist/
 out/
 build/
+# ...but apps/desktop/build holds electron-builder's source assets (the app +
+# tray icon), not output. The tray loads icon.png at runtime, so it must ship.
+!apps/desktop/build/
+!apps/desktop/build/**
 .next/
 .turbo/
 .cache/
@@ -51,3 +55,6 @@ data/
 *.sqlite
 *.sqlite-journal
 *.db
+
+# generated report preview (regenerate from apps/desktop/src/main/report-email.ts)
+preview/

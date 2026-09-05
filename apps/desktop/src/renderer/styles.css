@@ -1,26 +1,131 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Theme tokens.
+
+   Utilities compile to `var(--color-*)`, so overriding those same variables on
+   a selector re-themes the whole app without touching a single class name.
+   Dark is the base; light overrides. "System" is the absence of data-theme,
+   handled by the prefers-color-scheme block below.
+
+   Naming is by role, not shade — `text-muted` survives a palette change,
+   `text-slate-400` does not.
+--------------------------------------------------------------------------- */
 @theme {
   --color-bg: #0b0d10;
-  --color-surface: #11151b;
-  --color-surface-2: #161b22;
-  --color-border: #1f2630;
-  --color-text: #e6edf3;
-  --color-muted: #8b949e;
+  --color-surface: #12161d;
+  --color-elevate: #1d232c;
+  --color-border: #262e39;
+  --color-border-strong: #38424f;
+
+  --color-text: #e9eef4;
+  --color-muted: #a6b0bd;
+  --color-subtle: #7f8b99;
+  --color-faint: #616c7a;
+
   --color-accent: #58a6ff;
-  --color-good: #22c55e;
-  --color-warn: #eab308;
-  --color-bad: #ef4444;
+  --color-accent-ink: #0b0d10;
+  --color-good: #34d399;
+  --color-warn: #fbbf24;
+  --color-bad: #fb7185;
+  --color-good-soft: #06281d;
+  --color-warn-soft: #2a1f05;
+  --color-bad-soft: #2c1116;
 }
 
-html, body, #root { height: 100%; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+/* Explicit light choice. */
+:root[data-theme="light"] {
+  --color-bg: #f4f6f9;
+  --color-surface: #ffffff;
+  --color-elevate: #eaeef4;
+  --color-border: #d9dfe8;
+  --color-border-strong: #b9c3d1;
 
-* { scrollbar-width: thin; scrollbar-color: #2a3340 transparent; }
+  --color-text: #101720;
+  --color-muted: #4a5563;
+  --color-subtle: #667283;
+  --color-faint: #717d8d;
+
+  --color-accent: #1668c9;
+  --color-accent-ink: #ffffff;
+  --color-good: #067a52;
+  --color-warn: #9a6400;
+  --color-bad: #c2334d;
+  --color-good-soft: #e6f6ef;
+  --color-warn-soft: #fdf3e0;
+  --color-bad-soft: #fdeef1;
+}
+
+/* System preference, only when the user has not chosen explicitly. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]):not([data-theme="light"]) {
+    --color-bg: #f4f6f9;
+    --color-surface: #ffffff;
+    --color-elevate: #eaeef4;
+    --color-border: #d9dfe8;
+    --color-border-strong: #b9c3d1;
+
+    --color-text: #101720;
+    --color-muted: #4a5563;
+    --color-subtle: #667283;
+    --color-faint: #717d8d;
+
+    --color-accent: #1668c9;
+    --color-accent-ink: #ffffff;
+    --color-good: #067a52;
+    --color-warn: #9a6400;
+    --color-bad: #c2334d;
+    --color-good-soft: #e6f6ef;
+    --color-warn-soft: #fdf3e0;
+    --color-bad-soft: #fdeef1;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Type scale.
+
+   Everything in Tailwind's scale is rem-based, so the root size sets the whole
+   UI. 17px is the default because 16px left the dense screens genuinely hard
+   to read; the Settings control moves it without any layout special-casing.
+--------------------------------------------------------------------------- */
+:root {
+  --ui-root-size: 17px;
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]):not([data-theme="light"]) { color-scheme: light; }
+}
+
+html {
+  font-size: var(--ui-root-size);
+}
+html, body, #root { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers in tables/stats line up only if the figures are tabular. */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Focus ring — keyboard users could not see where they were. */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+* { scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2a3340; border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: #3a4452; }
+::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-subtle); }
+
+::placeholder { color: var(--color-faint); }
 
 /* --- print/export mode: hides chrome (sidebar, export buttons, scrollbars) -- */
 html.is-printing aside,
@@ -35,8 +140,72 @@ html.is-printing,
 html.is-printing body,
 html.is-printing #root {
   height: auto !important;
-  background: #0b0d10 !important;
+  background: var(--color-bg) !important;
 }
 @media print {
   aside, [data-export-chrome] { display: none !important; }
 }
+
+/* --- rendered markdown (plan notes preview) ---------------------------------
+   Tailwind's preflight strips list markers, heading sizes and margins, so the
+   preview needs its own typography or it renders as one flat wall of text. */
+.markdown-body > *:first-child { margin-top: 0; }
+.markdown-body > *:last-child { margin-bottom: 0; }
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 1.1em 0 0.5em;
+  line-height: 1.3;
+}
+.markdown-body h1 { font-size: 1.35em; }
+.markdown-body h2 { font-size: 1.18em; }
+.markdown-body h3 { font-size: 1.05em; }
+.markdown-body h4 { font-size: 1em; color: var(--color-muted); }
+.markdown-body p { margin: 0.6em 0; }
+.markdown-body ul,
+.markdown-body ol { margin: 0.5em 0; padding-left: 1.4em; }
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
+.markdown-body li { margin: 0.2em 0; }
+/* GFM task lists: no bullet, and room for the box. */
+.markdown-body li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.2em;
+}
+.markdown-body input[type="checkbox"] {
+  margin-right: 0.5em;
+  accent-color: var(--color-good);
+  cursor: pointer;
+  vertical-align: middle;
+}
+/* A ticked item reads as done at a glance, the way a struck line does. */
+.markdown-body li:has(> input[type="checkbox"]:checked) { color: var(--color-subtle); }
+.markdown-body a { color: var(--color-accent); text-decoration: underline; }
+.markdown-body code {
+  background: var(--color-elevate);
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.markdown-body pre {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.7em 0.9em;
+  overflow-x: auto;
+  margin: 0.7em 0;
+}
+.markdown-body pre code { background: none; padding: 0; }
+.markdown-body blockquote {
+  border-left: 3px solid var(--color-border-strong);
+  padding-left: 0.9em;
+  margin: 0.7em 0;
+  color: var(--color-muted);
+}
+.markdown-body hr { border: 0; border-top: 1px solid var(--color-border); margin: 1em 0; }
+.markdown-body table { border-collapse: collapse; margin: 0.7em 0; }
+.markdown-body th,
+.markdown-body td { border: 1px solid var(--color-border); padding: 0.35em 0.6em; }

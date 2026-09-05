@@ -1,6 +1,7 @@
 //! Foreground-window sampler. Returns the exe name + path, PID, and window
 //! title of whatever window currently has focus.
 
+#[cfg(windows)]
 use std::path::Path;
 
 #[cfg(windows)]
@@ -92,7 +93,22 @@ unsafe fn process_exe_path(pid: u32) -> Option<String> {
     Some(String::from_utf16_lossy(&buf[..size as usize]))
 }
 
-#[cfg(not(windows))]
+/// Linux has no window handle to hand to the browser sampler — there is no
+/// out-of-process accessibility read equivalent to UI Automation — so `hwnd`
+/// is 0 and the browser sampler falls back to history + title.
+#[cfg(target_os = "linux")]
+pub fn sample() -> Option<WindowInfo> {
+    let w = super::linux::sample_window()?;
+    Some(WindowInfo {
+        hwnd: 0,
+        exe: w.exe,
+        exe_path: w.exe_path,
+        pid: w.pid,
+        title: w.title,
+    })
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn sample() -> Option<WindowInfo> {
     None
 }

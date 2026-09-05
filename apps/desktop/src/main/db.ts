@@ -10,8 +10,15 @@ import type {
   NewCategory,
   NewCategoryRule,
   NewEventTag,
+  NewPlanNote,
+  NewScheduleBlock,
+  NewScheduleOverride,
   NotificationLogEntry,
   PersistedReportRef,
+  PlanNote,
+  ScheduleBlock,
+  ScheduleBlockPatch,
+  ScheduleOverride,
 } from "@desktop-tracker/shared";
 import {
   DEFAULT_APP_RULES,
@@ -127,6 +134,60 @@ function migrate(d: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_notification_log_ts ON notification_log(ts);
     CREATE INDEX IF NOT EXISTS idx_notification_log_kind ON notification_log(kind, ts);
+
+    -- v0.8 — weekly schedule (recurring plan + dated exceptions)
+    CREATE TABLE IF NOT EXISTS schedule_blocks (
+      id           INTEGER PRIMARY KEY,
+      day_of_week  INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+      start_min    INTEGER NOT NULL CHECK (start_min BETWEEN 0 AND 1439),
+      end_min      INTEGER NOT NULL CHECK (end_min BETWEEN 1 AND 1440),
+      title        TEXT NOT NULL,
+      category     TEXT NOT NULL,
+      is_primary   INTEGER NOT NULL DEFAULT 0,
+      notes        TEXT,
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL,
+      CHECK (end_min > start_min)
+    );
+    CREATE INDEX IF NOT EXISTS idx_schedule_blocks_day
+      ON schedule_blocks(day_of_week, start_min);
+
+    CREATE TABLE IF NOT EXISTS schedule_overrides (
+      id          INTEGER PRIMARY KEY,
+      date        TEXT NOT NULL,
+      block_id    INTEGER,
+      kind        TEXT NOT NULL CHECK (kind IN ('modify','remove','add')),
+      start_min   INTEGER,
+      end_min     INTEGER,
+      title       TEXT,
+      category    TEXT,
+      is_primary  INTEGER,
+      notes       TEXT,
+      created_at  INTEGER NOT NULL,
+      FOREIGN KEY (block_id) REFERENCES schedule_blocks(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_schedule_overrides_date ON schedule_overrides(date);
+    -- One override per (date, block) so re-editing the same day replaces rather
+    -- than stacks. 'add' rows have a NULL block_id, which SQLite treats as
+    -- distinct in a UNIQUE index, so multiple additions per date still work.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_overrides_unique
+      ON schedule_overrides(date, block_id);
+
+    -- v0.9 — per-category plan notes. One Markdown document per category per
+    -- day; checkboxes live in the text as "- [ ]", so there is no separate
+    -- task table. (v0.9.0 briefly had a plan_items table — superseded, and
+    -- folded into the notes by migratePlanItemsIntoNotes below.)
+    CREATE TABLE IF NOT EXISTS plan_notes (
+      id          INTEGER PRIMARY KEY,
+      category    TEXT NOT NULL,
+      date        TEXT NOT NULL,
+      body        TEXT NOT NULL,
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_notes_unique
+      ON plan_notes(category, date);
+    CREATE INDEX IF NOT EXISTS idx_plan_notes_date ON plan_notes(date);
   `);
 }
 
@@ -543,7 +604,15 @@ export function findEventsNeedingAi(
            'codex.exe',
            'snippingtool.exe',
            'shellexperiencehost.exe',
-           'shellhost.exe'
+           'shellhost.exe',
+           -- Linux binaries carry no .exe suffix
+           'code',
+           'cursor',
+           'windsurf',
+           'codium',
+           'gnome-shell',
+           'gnome-screenshot',
+           'xdg-desktop-portal-gnome'
          )
          AND coalesce(e.domain, '') NOT IN (
            'biblegateway.com',
@@ -635,6 +704,366 @@ export function lastNotificationOfKindToday(
     )
     .get(kind, dayStart.getTime()) as NotificationLogRow | undefined;
   return row ? rowToNotificationLog(row) : null;
+}
+
+// ---- weekly schedule ----
+
+interface ScheduleBlockRow {
+  id: number;
+  day_of_week: number;
+  start_min: number;
+  end_min: number;
+  title: string;
+  category: string;
+  is_primary: number;
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToScheduleBlock(r: ScheduleBlockRow): ScheduleBlock {
+  return {
+    id: r.id,
+    dayOfWeek: r.day_of_week as ScheduleBlock["dayOfWeek"],
+    startMin: r.start_min,
+    endMin: r.end_min,
+    title: r.title,
+    category: r.category,
+    isPrimary: r.is_primary === 1,
+    notes: r.notes,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function listScheduleBlocks(): ScheduleBlock[] {
+  const rows = getDb()
+    .prepare(`SELECT * FROM schedule_blocks ORDER BY day_of_week ASC, start_min ASC`)
+    .all() as ScheduleBlockRow[];
+  return rows.map(rowToScheduleBlock);
+}
+
+/**
+ * Exactly one block per day is the most important task, so promoting one
+ * demotes the rest of that day. Keeping the invariant here means no caller can
+ * write a day with two stars (or, after an edit, none).
+ */
+function demoteOtherPrimaries(dayOfWeek: number, keepId: number | null): void {
+  getDb()
+    .prepare(
+      `UPDATE schedule_blocks SET is_primary = 0
+        WHERE day_of_week = ? AND id IS NOT ?`
+    )
+    .run(dayOfWeek, keepId);
+}
+
+/**
+ * If a day lost its most important task, promote its earliest block.
+ *
+ * `preferNotId` is the block that was just un-starred: hand the star to
+ * something else so un-starring visibly does something. It only goes back to
+ * that block when it is the day's last one, since a populated day must always
+ * have exactly one.
+ */
+function ensureDayHasPrimary(dayOfWeek: number, preferNotId: number | null = null): void {
+  const d = getDb();
+  const has = d
+    .prepare(
+      `SELECT 1 FROM schedule_blocks WHERE day_of_week = ? AND is_primary = 1 LIMIT 1`
+    )
+    .get(dayOfWeek);
+  if (has) return;
+
+  const pick = d.prepare(
+    `SELECT id FROM schedule_blocks
+      WHERE day_of_week = ? AND id IS NOT ?
+      ORDER BY start_min ASC LIMIT 1`
+  );
+  const next =
+    (pick.get(dayOfWeek, preferNotId) as { id: number } | undefined) ??
+    (preferNotId === null
+      ? undefined
+      : (pick.get(dayOfWeek, null) as { id: number } | undefined));
+  if (!next) return;
+  d.prepare(`UPDATE schedule_blocks SET is_primary = 1 WHERE id = ?`).run(next.id);
+}
+
+export function insertScheduleBlock(b: NewScheduleBlock): ScheduleBlock {
+  const d = getDb();
+  const tx = d.transaction(() => {
+    const now = Date.now();
+    const r = d
+      .prepare(
+        `INSERT INTO schedule_blocks
+           (day_of_week, start_min, end_min, title, category, is_primary, notes,
+            created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        b.dayOfWeek,
+        b.startMin,
+        b.endMin,
+        b.title,
+        b.category,
+        b.isPrimary ? 1 : 0,
+        b.notes,
+        now,
+        now
+      );
+    const id = Number(r.lastInsertRowid);
+    if (b.isPrimary) demoteOtherPrimaries(b.dayOfWeek, id);
+    else ensureDayHasPrimary(b.dayOfWeek);
+    return id;
+  });
+  const id = tx();
+  return getScheduleBlock(id)!;
+}
+
+export function getScheduleBlock(id: number): ScheduleBlock | null {
+  const row = getDb()
+    .prepare(`SELECT * FROM schedule_blocks WHERE id = ?`)
+    .get(id) as ScheduleBlockRow | undefined;
+  return row ? rowToScheduleBlock(row) : null;
+}
+
+export function updateScheduleBlock(
+  id: number,
+  patch: ScheduleBlockPatch
+): ScheduleBlock | null {
+  const d = getDb();
+  const existing = getScheduleBlock(id);
+  if (!existing) return null;
+
+  const mapping: Record<keyof ScheduleBlockPatch, string> = {
+    dayOfWeek: "day_of_week",
+    startMin: "start_min",
+    endMin: "end_min",
+    title: "title",
+    category: "category",
+    isPrimary: "is_primary",
+    notes: "notes",
+  };
+
+  const tx = d.transaction(() => {
+    const fields: string[] = [];
+    const params: Record<string, unknown> = { id };
+    for (const [k, col] of Object.entries(mapping) as [
+      keyof ScheduleBlockPatch,
+      string,
+    ][]) {
+      const v = patch[k];
+      if (v === undefined) continue;
+      fields.push(`${col} = @${k}`);
+      params[k] = typeof v === "boolean" ? (v ? 1 : 0) : (v as unknown);
+    }
+    if (fields.length > 0) {
+      fields.push("updated_at = @updatedAt");
+      params.updatedAt = Date.now();
+      d.prepare(`UPDATE schedule_blocks SET ${fields.join(", ")} WHERE id = @id`).run(
+        params
+      );
+    }
+    const day = patch.dayOfWeek ?? existing.dayOfWeek;
+    const isPrimary = patch.isPrimary ?? existing.isPrimary;
+
+    // A starred block carries its star across a day move, so the destination
+    // day has to be re-checked even when isPrimary itself did not change.
+    if (isPrimary) demoteOtherPrimaries(day, id);
+    else ensureDayHasPrimary(day, id);
+
+    // Moving a block out of a day can leave that day starless.
+    if (patch.dayOfWeek !== undefined && patch.dayOfWeek !== existing.dayOfWeek) {
+      ensureDayHasPrimary(existing.dayOfWeek);
+    }
+  });
+  tx();
+  return getScheduleBlock(id);
+}
+
+export function deleteScheduleBlock(id: number): boolean {
+  const d = getDb();
+  const existing = getScheduleBlock(id);
+  if (!existing) return false;
+  const tx = d.transaction(() => {
+    d.prepare(`DELETE FROM schedule_blocks WHERE id = ?`).run(id);
+    ensureDayHasPrimary(existing.dayOfWeek);
+  });
+  tx();
+  return true;
+}
+
+interface ScheduleOverrideRow {
+  id: number;
+  date: string;
+  block_id: number | null;
+  kind: string;
+  start_min: number | null;
+  end_min: number | null;
+  title: string | null;
+  category: string | null;
+  is_primary: number | null;
+  notes: string | null;
+  created_at: number;
+}
+
+function rowToScheduleOverride(r: ScheduleOverrideRow): ScheduleOverride {
+  return {
+    id: r.id,
+    date: r.date,
+    blockId: r.block_id,
+    kind: r.kind as ScheduleOverride["kind"],
+    startMin: r.start_min,
+    endMin: r.end_min,
+    title: r.title,
+    category: r.category,
+    isPrimary: r.is_primary === null ? null : r.is_primary === 1,
+    notes: r.notes,
+    createdAt: r.created_at,
+  };
+}
+
+/** Overrides in a date window, inclusive. Omit both bounds for all of them. */
+export function listScheduleOverrides(
+  fromDate?: string,
+  toDate?: string
+): ScheduleOverride[] {
+  const d = getDb();
+  const rows = (
+    fromDate && toDate
+      ? d
+          .prepare(
+            `SELECT * FROM schedule_overrides WHERE date BETWEEN ? AND ? ORDER BY date ASC`
+          )
+          .all(fromDate, toDate)
+      : d.prepare(`SELECT * FROM schedule_overrides ORDER BY date ASC`).all()
+  ) as ScheduleOverrideRow[];
+  return rows.map(rowToScheduleOverride);
+}
+
+/**
+ * Write a one-date exception, replacing any existing override for the same
+ * (date, template block) pair so repeated edits to one day do not pile up.
+ */
+export function upsertScheduleOverride(o: NewScheduleOverride): ScheduleOverride {
+  const d = getDb();
+  const tx = d.transaction(() => {
+    if (o.blockId != null) {
+      d.prepare(`DELETE FROM schedule_overrides WHERE date = ? AND block_id = ?`).run(
+        o.date,
+        o.blockId
+      );
+    }
+    if (o.isPrimary === true) {
+      // Only one most-important task on the day, overrides included.
+      d.prepare(
+        `UPDATE schedule_overrides SET is_primary = 0 WHERE date = ? AND is_primary = 1`
+      ).run(o.date);
+    }
+    const r = d
+      .prepare(
+        `INSERT INTO schedule_overrides
+           (date, block_id, kind, start_min, end_min, title, category, is_primary,
+            notes, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        o.date,
+        o.blockId,
+        o.kind,
+        o.startMin,
+        o.endMin,
+        o.title,
+        o.category,
+        o.isPrimary === null ? null : o.isPrimary ? 1 : 0,
+        o.notes,
+        Date.now()
+      );
+    return Number(r.lastInsertRowid);
+  });
+  const id = tx();
+  const row = d
+    .prepare(`SELECT * FROM schedule_overrides WHERE id = ?`)
+    .get(id) as ScheduleOverrideRow;
+  return rowToScheduleOverride(row);
+}
+
+export function deleteScheduleOverride(id: number): boolean {
+  const r = getDb().prepare(`DELETE FROM schedule_overrides WHERE id = ?`).run(id);
+  return r.changes > 0;
+}
+
+/** Drop every exception for a date, reverting it to the weekly template. */
+export function clearScheduleOverridesForDate(date: string): number {
+  const r = getDb().prepare(`DELETE FROM schedule_overrides WHERE date = ?`).run(date);
+  return r.changes;
+}
+
+/**
+ * Give a fresh install a plan to react to rather than an empty grid: a daily
+ * study anchor plus weekday work blocks. Only ever runs when the schedule is
+ * completely empty, so it cannot overwrite a real plan — and every block is
+ * editable or deletable from the Schedule page.
+ */
+export function seedExampleScheduleIfEmpty(): void {
+  const d = getDb();
+  const { c } = d.prepare(`SELECT COUNT(*) as c FROM schedule_blocks`).get() as {
+    c: number;
+  };
+  if (c > 0) return;
+
+  const HOUR = 60;
+  const study = { startMin: 9 * HOUR + 30, endMin: 10 * HOUR + 30 };
+  const workDays = [0, 1, 2, 4]; // Mon, Tue, Wed, Fri
+
+  const blocks: NewScheduleBlock[] = [];
+  for (let day = 0; day <= 6; day++) {
+    const isWorkDay = workDays.includes(day);
+    blocks.push({
+      dayOfWeek: day as NewScheduleBlock["dayOfWeek"],
+      ...study,
+      title: "Bible study",
+      category: "Religion",
+      // On a day with no work blocks, study is what matters most.
+      isPrimary: !isWorkDay,
+      notes: null,
+    });
+    if (!isWorkDay) continue;
+    blocks.push({
+      dayOfWeek: day as NewScheduleBlock["dayOfWeek"],
+      startMin: 10 * HOUR + 30,
+      endMin: 13 * HOUR,
+      title: "Startup — deep work",
+      category: "Work",
+      isPrimary: true,
+      notes: null,
+    });
+    blocks.push({
+      dayOfWeek: day as NewScheduleBlock["dayOfWeek"],
+      startMin: 14 * HOUR,
+      endMin: 17 * HOUR + 30,
+      title: "Startup — afternoon",
+      category: "Work",
+      isPrimary: false,
+      notes: null,
+    });
+  }
+
+  const tx = d.transaction(() => {
+    for (const b of blocks) insertScheduleBlock(b);
+  });
+  tx();
+  console.log(`[db] seeded ${blocks.length} example schedule block(s)`);
+}
+
+/** Housekeeping: overrides for dates already in the past have no further use. */
+export function pruneOldScheduleOverrides(beforeDate: string): number {
+  const r = getDb()
+    .prepare(`DELETE FROM schedule_overrides WHERE date < ?`)
+    .run(beforeDate);
+  if (r.changes > 0) {
+    console.log(`[db] pruned ${r.changes} expired schedule override(s)`);
+  }
+  return r.changes;
 }
 
 // ---- settings ----
@@ -996,4 +1425,130 @@ export function upsertTaxonomyDomainRules(): void {
   if (added > 0 || updated > 0) {
     console.log(`[db] synced taxonomy domain rule(s): added=${added} updated=${updated}`);
   }
+}
+
+// ---------------- per-category plan notes ----------------
+
+interface PlanNoteRow {
+  id: number;
+  category: string;
+  date: string;
+  body: string;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToPlanNote(r: PlanNoteRow): PlanNote {
+  return {
+    id: r.id,
+    category: r.category,
+    date: r.date,
+    body: r.body,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function listPlanNotes(category?: string, limit?: number): PlanNote[] {
+  const d = getDb();
+  const cap = limit && limit > 0 ? Math.min(limit, 1000) : 500;
+  const rows = (
+    category
+      ? d
+          .prepare(
+            `SELECT * FROM plan_notes WHERE category = ?
+              ORDER BY date DESC, id DESC LIMIT ?`
+          )
+          .all(category, cap)
+      : d
+          .prepare(`SELECT * FROM plan_notes ORDER BY date DESC, category ASC LIMIT ?`)
+          .all(cap)
+  ) as PlanNoteRow[];
+  return rows.map(rowToPlanNote);
+}
+
+export function getPlanNote(category: string, date: string): PlanNote | null {
+  const row = getDb()
+    .prepare(`SELECT * FROM plan_notes WHERE category = ? AND date = ?`)
+    .get(category, date) as PlanNoteRow | undefined;
+  return row ? rowToPlanNote(row) : null;
+}
+
+/** Newest note strictly before `date` — the context carried into today. */
+export function getPreviousPlanNote(category: string, date: string): PlanNote | null {
+  const row = getDb()
+    .prepare(
+      `SELECT * FROM plan_notes WHERE category = ? AND date < ?
+        ORDER BY date DESC LIMIT 1`
+    )
+    .get(category, date) as PlanNoteRow | undefined;
+  return row ? rowToPlanNote(row) : null;
+}
+
+/** Write today's note. An empty body deletes the row rather than storing "". */
+export function upsertPlanNote(note: NewPlanNote): PlanNote | null {
+  const d = getDb();
+  const body = note.body.trim();
+  if (!body) {
+    d.prepare(`DELETE FROM plan_notes WHERE category = ? AND date = ?`).run(
+      note.category,
+      note.date
+    );
+    return null;
+  }
+  const now = Date.now();
+  d.prepare(
+    `INSERT INTO plan_notes (category, date, body, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(category, date)
+       DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at`
+  ).run(note.category, note.date, body, now, now);
+  return getPlanNote(note.category, note.date);
+}
+
+export function deletePlanNote(id: number): boolean {
+  return getDb().prepare(`DELETE FROM plan_notes WHERE id = ?`).run(id).changes > 0;
+}
+
+/**
+ * Fold the retired `plan_items` table into today's notes as Markdown
+ * checkboxes, then drop it. Runs once — after the table is gone it is a no-op.
+ *
+ * Items predated the Markdown editor; leaving them stranded in a table nothing
+ * reads would silently lose whatever the user had already written.
+ */
+export function migratePlanItemsIntoNotes(): void {
+  const d = getDb();
+  const exists = d
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='plan_items'`)
+    .get();
+  if (!exists) return;
+
+  const rows = d
+    .prepare(
+      `SELECT category, kind, text, done FROM plan_items
+        ORDER BY category ASC, sort_order ASC, id ASC`
+    )
+    .all() as { category: string; kind: string; text: string; done: number }[];
+
+  if (rows.length > 0) {
+    const today = new Date();
+    const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const byCategory = new Map<string, string[]>();
+    for (const r of rows) {
+      const line =
+        r.kind === "task" ? `- [${r.done ? "x" : " "}] ${r.text}` : `- ${r.text}`;
+      byCategory.set(r.category, [...(byCategory.get(r.category) ?? []), line]);
+    }
+    d.transaction(() => {
+      for (const [category, lines] of byCategory) {
+        const existing = getPlanNote(category, date);
+        const body = existing ? `${existing.body}\n\n${lines.join("\n")}` : lines.join("\n");
+        upsertPlanNote({ category, date, body });
+      }
+    })();
+    console.log(`[db] folded ${rows.length} plan item(s) into notes`);
+  }
+
+  d.exec(`DROP TABLE IF EXISTS plan_items`);
 }

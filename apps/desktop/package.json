@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "Electron + React desktop app for desktop-tracker.",
+  "productName": "Desktop Tracker",
   "main": "dist/main/index.cjs",
   "scripts": {
     "dev": "node ./scripts/kill-stale-dev.mjs && cross-env NODE_ENV=development concurrently -k -n main,renderer -c blue,green \"npm:dev:main\" \"npm:dev:renderer\"",
@@ -22,6 +23,7 @@
     "@desktop-tracker/shared": "*",
     "better-sqlite3": "^11.5.0",
     "date-fns": "^4.1.0",
+    "marked": "^18.0.9",
     "nodemailer": "^9.0.1"
   },
   "devDependencies": {

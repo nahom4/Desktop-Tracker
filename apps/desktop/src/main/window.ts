@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, Menu, MenuItem } from "electron";
 import path from "node:path";
 
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -23,8 +23,13 @@ export function createMainWindow(opts: MainWindowOptions = {}): BrowserWindow {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
+      // Chromium's built-in spellchecker, for the notes editor.
+      spellcheck: true,
     },
   });
+
+  win.webContents.session.setSpellCheckerLanguages(["en-US"]);
+  attachSpellCheckMenu(win);
 
   if (showOnReady) {
     win.once("ready-to-show", () => {
@@ -43,4 +48,54 @@ export function createMainWindow(opts: MainWindowOptions = {}): BrowserWindow {
   }
 
   return win;
+}
+
+/**
+ * Right-click menu for the notes editor.
+ *
+ * Chromium underlines misspellings on its own, but the corrections only become
+ * usable through a context menu — without this the squiggles are decoration.
+ * Also carries cut/copy/paste, which an app with `autoHideMenuBar` otherwise
+ * leaves to keyboard shortcuts alone.
+ */
+function attachSpellCheckMenu(win: BrowserWindow): void {
+  win.webContents.on("context-menu", (_event, params) => {
+    const menu = new Menu();
+
+    for (const suggestion of params.dictionarySuggestions) {
+      menu.append(
+        new MenuItem({
+          label: suggestion,
+          click: () => win.webContents.replaceMisspelling(suggestion),
+        })
+      );
+    }
+
+    if (params.misspelledWord) {
+      if (params.dictionarySuggestions.length > 0) {
+        menu.append(new MenuItem({ type: "separator" }));
+      }
+      menu.append(
+        new MenuItem({
+          label: "Add to dictionary",
+          click: () =>
+            win.webContents.session.addWordToSpellCheckerDictionary(
+              params.misspelledWord
+            ),
+        })
+      );
+      menu.append(new MenuItem({ type: "separator" }));
+    }
+
+    if (params.isEditable) {
+      menu.append(new MenuItem({ role: "cut", enabled: params.editFlags.canCut }));
+      menu.append(new MenuItem({ role: "copy", enabled: params.editFlags.canCopy }));
+      menu.append(new MenuItem({ role: "paste", enabled: params.editFlags.canPaste }));
+      menu.append(new MenuItem({ role: "selectAll" }));
+    } else if (params.selectionText) {
+      menu.append(new MenuItem({ role: "copy" }));
+    }
+
+    if (menu.items.length > 0) menu.popup({ window: win });
+  });
 }
