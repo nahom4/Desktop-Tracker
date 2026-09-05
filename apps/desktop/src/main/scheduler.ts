@@ -32,9 +32,14 @@ import {
   getTagsForEventIds,
   listCategories,
 } from "./db";
+import { getWeekCategoryStats } from "./schedule";
 import { runUntilCaughtUp as runAiClassifier } from "./ai-classifier";
 import { generateAiReview } from "./ai-review";
-import { checkAndNotify, sendDailyReportNotification } from "./notifier";
+import {
+  checkAndNotify,
+  sendDailyReportNotification,
+  sendWeeklyReportNotification,
+} from "./notifier";
 import { syncToGithub } from "./sync-github";
 
 const DAY_MS = 86_400_000;
@@ -184,7 +189,11 @@ async function runDailyJob(
   }
 }
 
-async function runWeeklyJob(nowTs: number): Promise<void> {
+async function runWeeklyJob(
+  nowTs: number,
+  opts: { notify?: boolean } = {}
+): Promise<void> {
+  const { notify = true } = opts;
   console.log("[scheduler] running weekly job");
   const weekStart = startOfLocalWeek(nowTs);
   const weekEnd = weekStart + WEEK_MS;
@@ -212,6 +221,15 @@ async function runWeeklyJob(nowTs: number): Promise<void> {
   console.log(
     `[scheduler] weekly report saved (avgProd=${report.averageProductivityScore} avgFocus=${report.averageFocusScore} aiReview=${report.aiReview ? "yes" : "no"})`
   );
+
+  if (notify) {
+    try {
+      const categoryStats = getWeekCategoryStats(nowTs);
+      await sendWeeklyReportNotification(report, weekStart, categoryStats);
+    } catch (e) {
+      console.error("[scheduler] weekly report delivery failed", e);
+    }
+  }
 }
 
 function hasReport(kind: "daily" | "weekly", periodStart: number): boolean {
@@ -255,7 +273,7 @@ export async function catchUpReports(): Promise<number> {
     getEventsInRange(lastWeekStart, lastWeekStart + WEEK_MS).length > 0
   ) {
     try {
-      await runWeeklyJob(lastWeekStart + WEEK_MS / 2);
+      await runWeeklyJob(lastWeekStart + WEEK_MS / 2, { notify: false });
       made++;
     } catch (e) {
       console.error("[scheduler] catch-up weekly failed", e);

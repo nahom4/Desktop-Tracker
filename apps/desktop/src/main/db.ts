@@ -696,13 +696,20 @@ export function lastNotificationOfKindToday(
 ): NotificationLogEntry | null {
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
+  return lastNotificationOfKindSince(kind, dayStart.getTime());
+}
+
+export function lastNotificationOfKindSince(
+  kind: NotificationLogEntry["kind"],
+  sinceTs: number
+): NotificationLogEntry | null {
   const row = getDb()
     .prepare(
       `SELECT * FROM notification_log
        WHERE kind = ? AND ts >= ?
        ORDER BY ts DESC LIMIT 1`
     )
-    .get(kind, dayStart.getTime()) as NotificationLogRow | undefined;
+    .get(kind, sinceTs) as NotificationLogRow | undefined;
   return row ? rowToNotificationLog(row) : null;
 }
 

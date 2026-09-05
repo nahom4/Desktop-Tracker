@@ -22,8 +22,10 @@ import type {
   DailyReport,
   NotificationConfig,
   NotificationLogEntry,
+  WeeklyReport,
 } from "@desktop-tracker/shared";
 import { DEFAULT_NOTIFICATION_CONFIG } from "@desktop-tracker/shared";
+import { renderWeeklyReportEmail, type WeekCategoryStat } from "./report-email";
 import {
   getCategoryRules,
   getEventsInRange,
@@ -31,6 +33,7 @@ import {
   getTagsForEventIds,
   insertNotificationLog,
   lastNotificationOfKindToday,
+  lastNotificationOfKindSince,
   listCategories,
   setSetting,
 } from "./db";
@@ -175,7 +178,8 @@ async function sendOsNotification(title: string, body: string): Promise<boolean>
 async function sendEmail(
   cfg: NotificationConfig,
   title: string,
-  body: string
+  body: string,
+  html?: string
 ): Promise<boolean> {
   if (!cfg.emailEnabled) return false;
   const pass = getSetting(SMTP_PASS_KEY) ?? "";
@@ -193,8 +197,27 @@ async function sendEmail(
     to: cfg.emailTo,
     subject: title,
     text: body,
+    html,
   });
   return true;
+}
+
+function compactWeeklyBody(report: WeeklyReport): string {
+  const topCategories = report.breakdown.byCategory.slice(0, 4);
+  const lines = [
+    `Avg productivity ${report.averageProductivityScore}  Focus ${report.averageFocusScore}`,
+    `Active ${formatDuration(report.totalActiveMs)} · idle ${formatDuration(report.totalIdleMs)}`,
+  ];
+  if (report.aiReview?.summary) lines.push("", report.aiReview.summary);
+  if (topCategories.length > 0) {
+    lines.push(
+      "",
+      "Top categories:",
+      ...topCategories.map((b) => `• ${b.label}: ${formatDuration(b.durationMs)}`)
+    );
+  }
+  if (report.oneChange) lines.push("", `One change: ${report.oneChange}`);
+  return lines.join("\n");
 }
 
 /**
@@ -352,6 +375,58 @@ export async function sendDailyReportNotification(
       date: report.date,
       productivityScore: report.productivityScore,
       focusScore: report.focusScore,
+    },
+  });
+}
+
+/**
+ * Deliver the weekly report when the Sunday job runs.
+ *
+ * The HTML body is shared with the email template so the reminder reads well
+ * in mail clients, while the OS toast stays compact enough to be useful.
+ */
+export async function sendWeeklyReportNotification(
+  report: WeeklyReport,
+  weekStartTs: number,
+  categoryStats: WeekCategoryStat[] = []
+): Promise<NotificationLogEntry | null> {
+  const cfg = getNotificationConfig();
+  if (lastNotificationOfKindSince("weekly_report", weekStartTs)) return null;
+
+  const title = `Weekly report — ${report.weekStart} to ${report.weekEnd}`;
+  const { html, text } = renderWeeklyReportEmail(report, categoryStats);
+  const body = compactWeeklyBody(report);
+
+  let osOk = false;
+  let emailOk = false;
+  let lastError: string | null = null;
+
+  if (cfg.osEnabled) {
+    osOk = await sendOsNotification(title, body);
+  }
+  if (cfg.emailEnabled) {
+    try {
+      emailOk = await sendEmail(cfg, title, text, html);
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+      console.error("[notifier] weekly report email failed:", lastError);
+    }
+  }
+
+  if (!osOk && !emailOk) return null;
+
+  return insertNotificationLog({
+    ts: Date.now(),
+    kind: "weekly_report",
+    channel: osOk && emailOk ? "both" : emailOk ? "email" : "os",
+    title,
+    body: body + (lastError ? `\n\n[email error] ${lastError}` : ""),
+    meta: {
+      weekStartTs,
+      weekStart: report.weekStart,
+      weekEnd: report.weekEnd,
+      averageProductivityScore: report.averageProductivityScore,
+      averageFocusScore: report.averageFocusScore,
     },
   });
 }

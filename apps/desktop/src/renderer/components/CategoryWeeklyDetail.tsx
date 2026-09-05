@@ -23,7 +23,13 @@ function extractTasks(notes: PlanNote[]): TaskLine[] {
     for (const line of note.body.split(/\r?\n/)) {
       const m = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.+?)\s*$/);
       if (!m) continue;
-      out.push({ text: m[2], completed: m[1].toLowerCase() === "x", date: note.date });
+      const text = m[2];
+      if (!text) continue;
+      out.push({
+        text,
+        completed: m[1]?.toLowerCase() === "x",
+        date: note.date,
+      });
     }
   }
   return out;
@@ -73,17 +79,25 @@ export function CategoryWeeklyDetail({
   const open = tasks.filter((t) => !t.completed);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 cursor-pointer"
+      role="presentation"
+      onClick={onClose}
+    >
       <div
-        className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-2xl"
+        className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-2xl cursor-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="weekly-category-detail-title"
+        onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-border bg-surface px-6 py-4">
           <div>
-            <h2 className="text-lg font-semibold">{category.category}</h2>
+            <h2 id="weekly-category-detail-title" className="text-lg font-semibold">{category.category}</h2>
             <p className="text-xs text-subtle mt-0.5">{weekStart} → {weekEnd}</p>
           </div>
-          <button onClick={onClose} className="text-sm text-subtle hover:text-text px-2 py-1">Close</button>
+          <button type="button" onClick={onClose} className="text-sm text-subtle hover:text-text px-2 py-1">Close</button>
         </header>
 
         <div className="p-6 space-y-6">

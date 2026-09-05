@@ -65,7 +65,8 @@ export function HealthBars({ title = "Category health", health, period, onCatego
               key={h.category}
               type="button"
               onClick={() => onCategoryClick?.(h)}
-              className="block w-full text-left rounded-lg hover:bg-elevate/40 focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong px-2 py-1 -mx-2 transition-colors"
+              aria-label={`View ${h.category} accomplishments this week`}
+              className="block w-full text-left rounded-lg hover:bg-elevate/40 focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong px-2 py-1 -mx-2 transition-colors cursor-pointer"
               title={`View ${h.category} accomplishments this week`}
             >
               {content}

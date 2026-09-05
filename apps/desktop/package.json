@@ -1,9 +1,14 @@
 {
   "name": "@desktop-tracker/desktop",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "Electron + React desktop app for desktop-tracker.",
   "productName": "Desktop Tracker",
+  "homepage": "https://github.com/nahom4/Desktop-Tracker",
+"author": {
+  "name": "Nahom Amare",
+  "email": "nahom4@users.noreply.github.com"
+},
   "main": "dist/main/index.cjs",
   "scripts": {
     "dev": "node ./scripts/kill-stale-dev.mjs && cross-env NODE_ENV=development concurrently -k -n main,renderer -c blue,green \"npm:dev:main\" \"npm:dev:renderer\"",

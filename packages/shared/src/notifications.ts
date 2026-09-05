@@ -31,7 +31,7 @@ export interface NotificationConfig {
 export interface NotificationLogEntry {
   id: number;
   ts: number;
-  kind: "unproductive_threshold" | "daily_report" | "test";
+  kind: "unproductive_threshold" | "daily_report" | "weekly_report" | "test";
   channel: "os" | "email" | "both";
   title: string;
   body: string;
